@@ -1,0 +1,14 @@
+{
+  "name": "knockoff-kitchen",
+  "version": "1.0.0",
+  "description": "Generate copycat recipes using DeepSeek AI via OpenRouter",
+  "main": "fixed_recipe_generator.js",
+  "type": "module",
+  "scripts": {
+    "start": "node fixed_recipe_generator.js",
+    "minimal": "node minimal_recipe_generator.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.0"
+  }
+}
