@@ -6,6 +6,7 @@ import json
 import cv2
 import base64
 import requests
+import shutil
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File
@@ -15,8 +16,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yt_dlp
 
-load_dotenv("backend/.env")
+load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+# Verify API key is loaded
+if not OPENROUTER_API_KEY:
+    print("WARNING: OPENROUTER_API_KEY not found in .env file!")
+    print("Please check that backend/.env exists and contains: OPENROUTER_API_KEY=your_key_here")
+else:
+    print(f"✓ API Key loaded: {OPENROUTER_API_KEY[:20]}...")
 
 app = FastAPI()
 
@@ -306,14 +314,48 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/submissions")
-async def list_submissions(x_admin_user: str = Header(None), x_admin_pass: str = Header(None)):
+async def list_submissions(
+    x_admin_user: str = Header(None), 
+    x_admin_pass: str = Header(None),
+    search: str = None,
+    page: int = 1,
+    limit: int = 50
+):
     if x_admin_user != ADMIN_USER or x_admin_pass != ADMIN_PASS:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM submissions ORDER BY created_at DESC")
+    
+    # Build search query
+    base_query = "SELECT * FROM submissions"
+    count_query = "SELECT COUNT(*) FROM submissions"
+    params = []
+    
+    if search and search.strip():
+        search_term = f"%{search.strip()}%"
+        where_clause = """ WHERE 
+            id LIKE ? OR 
+            filename LIKE ? OR 
+            original_url LIKE ? OR 
+            ip_address LIKE ? OR
+            analysis_result LIKE ?
+        """
+        base_query += where_clause
+        count_query += where_clause
+        params = [search_term] * 5
+    
+    # Get total count
+    c.execute(count_query, params)
+    total = c.fetchone()[0]
+    
+    # Add pagination
+    offset = (page - 1) * limit
+    base_query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    c.execute(base_query, params)
     rows = c.fetchall()
     conn.close()
     
@@ -338,7 +380,14 @@ async def list_submissions(x_admin_user: str = Header(None), x_admin_pass: str =
             "created_at": row["created_at"],
             "summary": summary
         })
-    return results
+    
+    return {
+        "submissions": results,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit
+    }
 
 @app.get("/api/submission/{submission_id}")
 async def get_submission(submission_id: str):

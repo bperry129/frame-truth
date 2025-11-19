@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getSubmissions } from '../services/api';
-import { PlayCircle, Calendar, AlertCircle, CheckCircle, Globe, Lock } from 'lucide-react';
+import { PlayCircle, Calendar, AlertCircle, CheckCircle, Globe, Lock, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface HistoryProps {
   adminAuth: { user: string; pass: string };
@@ -11,20 +11,53 @@ const History: React.FC<HistoryProps> = ({ adminAuth, onLogout }) => {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 50;
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [currentPage, searchQuery]);
 
   const loadHistory = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await getSubmissions(adminAuth.user, adminAuth.pass);
-      setSubmissions(data);
-    } catch (e) {
-      setError("Access Denied or Server Error");
+      const data = await getSubmissions(adminAuth.user, adminAuth.pass, searchQuery, currentPage, limit);
+      console.log('API Response:', data);
+      
+      // Handle both old (array) and new (paginated object) response formats
+      if (Array.isArray(data)) {
+        // Old format - direct array
+        console.log('Using old array format');
+        setSubmissions(data);
+        setTotal(data.length);
+        setTotalPages(1);
+      } else if (data.submissions && Array.isArray(data.submissions)) {
+        // New format - paginated object
+        console.log('Using new paginated format');
+        setSubmissions(data.submissions);
+        setTotal(data.total || 0);
+        setTotalPages(data.pages || 1);
+      } else {
+        console.error('Unexpected response format:', data);
+        throw new Error('Invalid response format from server. Check console for details.');
+      }
+    } catch (e: any) {
+      console.error('History Load Error:', e);
+      setError(e.message || "Access Denied or Server Error");
+      setSubmissions([]);
+      setTotal(0);
+      setTotalPages(1);
     }
     setLoading(false);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setCurrentPage(1); // Reset to first page on new search
   };
 
   const formatDate = (isoString: string) => {
@@ -43,7 +76,23 @@ const History: React.FC<HistoryProps> = ({ adminAuth, onLogout }) => {
             <Lock className="w-3 h-3" /> Logout
         </button>
         <h2 className="text-3xl font-bold text-white mb-4">Submission <span className="text-cyan-400">History</span></h2>
-        <p className="text-slate-400">Restricted Admin Area</p>
+        <p className="text-slate-400">Restricted Admin Area • Total: {total} submissions</p>
+      </div>
+
+      {/* Search Bar */}
+      <div className="mb-6">
+        <div className="relative max-w-md mx-auto">
+          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+            <Search className="w-4 h-4 text-slate-500" />
+          </div>
+          <input 
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search by ID, IP, URL, filename..." 
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-10 pr-4 py-3 text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600"
+          />
+        </div>
       </div>
 
       {loading ? (
@@ -54,8 +103,11 @@ const History: React.FC<HistoryProps> = ({ adminAuth, onLogout }) => {
               {error}
           </div>
       ) : submissions.length === 0 ? (
-          <div className="text-center text-slate-500 py-20 border border-slate-800 rounded-xl bg-slate-900/50">No submissions found.</div>
+          <div className="text-center text-slate-500 py-20 border border-slate-800 rounded-xl bg-slate-900/50">
+            {searchQuery ? `No submissions found matching "${searchQuery}"` : 'No submissions found.'}
+          </div>
       ) : (
+        <>
           <div className="grid gap-4">
               {submissions.map((sub) => (
                   <div key={sub.id} onClick={() => viewSubmission(sub.id)} className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-center gap-6 hover:bg-slate-900 hover:border-cyan-500/30 transition-all cursor-pointer group">
@@ -124,6 +176,36 @@ const History: React.FC<HistoryProps> = ({ adminAuth, onLogout }) => {
                   </div>
               ))}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-4">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </button>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 text-sm">
+                  Page <span className="text-white font-medium">{currentPage}</span> of <span className="text-white font-medium">{totalPages}</span>
+                </span>
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition-colors"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

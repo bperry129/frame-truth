@@ -40,9 +40,20 @@ export const getSubmission = async (id: string): Promise<any> => {
   }
 };
 
-export const getSubmissions = async (user: string, pass: string): Promise<any[]> => {
+export const getSubmissions = async (
+  user: string, 
+  pass: string, 
+  search?: string, 
+  page: number = 1, 
+  limit: number = 50
+): Promise<any> => {
   try {
-    const response = await fetch('http://localhost:8000/api/submissions', {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    params.append('page', page.toString());
+    params.append('limit', limit.toString());
+    
+    const response = await fetch(`http://localhost:8000/api/submissions?${params}`, {
         headers: { 
             'x-admin-user': user,
             'x-admin-pass': pass

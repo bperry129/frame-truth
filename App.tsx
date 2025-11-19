@@ -454,7 +454,7 @@ const App: React.FC = () => {
                   </div>
               )}
 
-              <AnalysisResults result={result} />
+              <AnalysisResults result={result} submissionId={submissionId} />
             </div>
           )}
         </main>

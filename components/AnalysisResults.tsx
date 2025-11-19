@@ -2,21 +2,71 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnalysisResult } from '../types';
 import TrajectoryChart from './TrajectoryChart';
-import { AlertTriangle, CheckCircle, BrainCircuit, Activity, FileVideo, Info, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, BrainCircuit, Activity, FileVideo, Info, X, Share2, Check } from 'lucide-react';
 
 interface AnalysisResultsProps {
   result: AnalysisResult;
+  submissionId?: string;
 }
 
-const AnalysisResults: React.FC<AnalysisResultsProps> = ({ result }) => {
+const AnalysisResults: React.FC<AnalysisResultsProps> = ({ result, submissionId }) => {
   const [activeInfo, setActiveInfo] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const isAi = result.isAi;
   const themeColor = isAi ? 'text-rose-500' : 'text-emerald-500';
   const themeBg = isAi ? 'bg-rose-500' : 'bg-emerald-500';
   const themeBorder = isAi ? 'border-rose-500' : 'border-emerald-500';
 
+  const shareUrl = submissionId ? `${window.location.origin}/?id=${submissionId}` : '';
+
+  const copyShareLink = () => {
+    if (shareUrl) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Share Link Bar */}
+      {submissionId && (
+        <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex items-center gap-3">
+          <Share2 className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider">Share This Result</p>
+            <input 
+              type="text" 
+              value={shareUrl} 
+              readOnly 
+              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+            />
+          </div>
+          <button
+            onClick={copyShareLink}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 flex-shrink-0 ${
+              copied 
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+            }`}
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Share2 className="w-4 h-4" />
+                Copy Link
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Top Verdict Card */}
       <div className={`relative overflow-hidden rounded-xl border ${themeBorder} bg-slate-900/80 p-8 text-center shadow-2xl`}>
         <div className={`absolute inset-0 ${themeBg} opacity-5 blur-2xl`}></div>
