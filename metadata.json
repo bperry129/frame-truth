@@ -1,0 +1,5 @@
+{
+  "name": "ReStraV AI Video Detector",
+  "description": "A forensic video analysis tool based on the ReStraV Perceptual Straightening research paper to detect AI-generated content.",
+  "requestFramePermissions": []
+}
