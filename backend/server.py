@@ -476,32 +476,70 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - **ROLLING SHUTTER**: Real cameras show this effect; AI often doesn't
        - **CHROMATIC ABERRATION**: Real lenses have color fringing; check if present/absent
 
-    6. 🚨 TEXT/LETTER ANALYSIS (CRITICAL AI INDICATOR - HIGH WEIGHT):
+    6. 🚨 TEXT/LETTER ANALYSIS (CRITICAL AI INDICATOR - HIGHEST PRIORITY):
        
-       **⚠️ PRIORITY CHECK: Examine ALL visible text, letters, signs, labels, logos in the video content**
+       **⚠️ MANDATORY: Examine EVERY SINGLE piece of text visible in ANY frame**
+       **This is THE MOST RELIABLE indicator of AI - be EXTREMELY scrutinous**
        
-       This is one of the MOST RELIABLE indicators of AI generation:
+       **Where to Look (check ALL of these):**
+       - Signs (street signs, store signs, airport signs, directional signs)
+       - Products (labels, packaging, bottles, cans)
+       - Screens (phones, computers, TVs, displays)
+       - Clothing (t-shirts, jerseys, brand names)
+       - Vehicles (license plates, logos, text on sides)
+       - Buildings (storefront names, addresses, posted notices)
+       - Documents (papers, books, magazines, newspapers)
+       - ANY other visible text
        
-       **AI-Generated Text Tells (Very Strong Evidence):**
-       - **Gibberish/nonsense words** - letters that don't form real words
-       - **Distorted letters** - warped, melted, or morphing characters
-       - **Inconsistent fonts** - letters changing style within same word
-       - **Letter mutations** - characters transforming between frames
-       - **Backwards/mirrored text** - reversed or upside-down letters
-       - **Morphing text** - words that shift or change between frames
-       - **Non-existent language** - letter-like symbols that aren't real characters
-       - **Blurred/illegible text** where it should be clear
+       **AI Text Detection - Be VERY Critical:**
+       
+       Even "mostly readable" text can be AI-generated. Look for:
+       
+       **Subtle AI Text Indicators (VERY COMMON in modern AI):**
+       - Letters that are **almost** correct but slightly off
+       - Text that looks "fuzzy" or "soft" even when in focus
+       - Spacing between letters that's inconsistent
+       - Letter heights that vary within the same word
+       - Serif/sans-serif mixing within same word
+       - Characters that look hand-drawn rather than printed
+       - Text that seems to "blend" into background slightly
+       - Words with correct letters but wrong/unusual spelling
+       - Real words but grammatically nonsensical combinations
+       - Font consistency issues (even subtle)
+       - Letters with unusual thickness variations
+       - Curved text that doesn't follow proper arc
+       - Shadowing/dimensionality that doesn't match lighting
+       
+       **CRITICAL: Modern AI (Sora, Runway Gen-3) can create VERY convincing text**
+       - Don't be fooled by text that looks "mostly good"
+       - AI text often looks 80-90% correct but has subtle issues
+       - Compare text across multiple frames - does it stay identical?
+       - Real printed text is PERFECTLY consistent across frames
+       - AI text often has MICRO-variations frame-to-frame
+       
+       **Frame-to-Frame Text Analysis (ESSENTIAL):**
+       - Does the EXACT same text look identical in consecutive frames?
+       - Do letter shapes subtly morph or shift?
+       - Does text clarity fluctuate even when camera is still?
+       - Do shadows/highlights on text change unnaturally?
        
        **IMPORTANT DISTINCTIONS:**
-       - ✅ Analyze text WITHIN the video (signs, products, shirts, screens, etc.)
-       - ❌ IGNORE user-added captions/subtitles (likely added by real person)
-       - ✅ Clear, readable text does NOT confirm video is real (could still be AI)
-       - ⚠️ Garbled/distorted text is VERY STRONG evidence of AI generation
+       - ✅ Analyze text WITHIN the video (in-scene text)
+       - ❌ IGNORE user-added captions/subtitles
+       - ⚠️ "Readable text" does NOT mean video is real!
+       - ⚠️ AI can create readable text - look for SUBTLE issues
        
-       **Scoring Impact:**
-       - If you see distorted/gibberish text → **Increase curvatureScore by 30-40 points**
-       - If text is morphing between frames → **Increase curvatureScore by 40-50 points**
-       - This should heavily weight your final determination
+       **Scoring Impact (AGGRESSIVE):**
+       - ANY text inconsistencies → **+40-50 to curvatureScore**
+       - Gibberish/distorted text → **+60-70 to curvatureScore**
+       - Text morphing between frames → **+70-80 to curvatureScore**
+       - Multiple text issues → **+80-90 to curvatureScore, set isAi=true**
+       - Even subtle text problems should heavily influence your decision
+       
+       **⚠️ DEFAULT ASSUMPTION: If video has text, assume it's AI until proven otherwise**
+       - Real text is PERFECT and CONSISTENT
+       - Any imperfection in text is a RED FLAG
+       - Be skeptical, not generous
 
     7. 🚨 AI-SPECIFIC ARTIFACT CHECKLIST (Modern Generators):
        
