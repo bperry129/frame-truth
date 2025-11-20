@@ -75,11 +75,6 @@ if not os.path.exists(DOWNLOAD_DIR):
 # Mount Static Files for playback
 app.mount("/videos", StaticFiles(directory=DOWNLOAD_DIR), name="videos")
 
-# Mount frontend static files
-import os
-if os.path.exists("dist"):
-    app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
-
 # Models
 class DownloadRequest(BaseModel):
     url: str
@@ -515,6 +510,10 @@ async def check_ip(request: Request):
         "all_headers": all_headers,
         "is_whitelisted": client_ip in ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16", "173.239.214.13"] or client_ip.startswith(("127.", "192.168.", "10.", "172."))
     }
+
+# Mount frontend static files AFTER all API routes are defined
+if os.path.exists("dist"):
+    app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
