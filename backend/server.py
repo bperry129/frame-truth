@@ -75,6 +75,11 @@ if not os.path.exists(DOWNLOAD_DIR):
 # Mount Static Files for playback
 app.mount("/videos", StaticFiles(directory=DOWNLOAD_DIR), name="videos")
 
+# Mount frontend static files
+import os
+if os.path.exists("dist"):
+    app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
+
 # Models
 class DownloadRequest(BaseModel):
     url: str
