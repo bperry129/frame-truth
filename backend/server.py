@@ -90,8 +90,8 @@ class SaveSubmissionRequest(BaseModel):
 
 # Helpers
 def check_rate_limit(ip: str) -> bool:
-    # Whitelist localhost and local development IPs
-    local_ips = ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16"]
+    # Whitelist localhost, local development IPs, and specific user IPs
+    local_ips = ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16", "173.239.214.13"]
     if ip in local_ips or ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
         print(f"✓ Whitelisted IP: {ip} - bypassing rate limit")
         return True
