@@ -12,29 +12,12 @@ interface DownloaderOptions {
   onProgress: (stage: string) => void;
 }
 
-// --- Priority 1: Local Backend ---
+// --- Priority 1: Backend (Local or Serverless) ---
 
-const downloadFromLocalBackend = async (url: string, report: (msg: string) => void): Promise<{ blob: Blob; filename: string; meta?: any } | null> => {
+const downloadFromBackend = async (url: string, report: (msg: string) => void): Promise<{ blob: Blob; filename: string; meta?: any } | null> => {
   try {
-    report("Connecting to Backend...");
+    report("Starting video extraction...");
     
-    // In production, skip the health check since we know the backend is available
-    if (process.env.NODE_ENV !== 'production') {
-      // Fast check to see if backend is running (development only)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1000); 
-      
-      try {
-          // We use /docs as a lightweight health check
-          await fetch(`${API_BASE_URL}/docs`, { method: 'HEAD', signal: controller.signal });
-          clearTimeout(timeoutId);
-      } catch (e) {
-          // Backend likely not running
-          return null; 
-      }
-    }
-
-    report("Backend found. Starting video extraction...");
     const response = await fetch(getApiUrl('download'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -140,8 +123,8 @@ export const downloadVideo = async (
   if (!url.startsWith('http')) url = `https://${url}`;
 
   try {
-    // 1. Try Local Backend
-    let backendData = await downloadFromLocalBackend(url, report);
+    // 1. Try Backend (Local or Serverless)
+    let backendData = await downloadFromBackend(url, report);
     let blob: Blob | null = null;
     let backendFilename: string | undefined;
     let backendMeta: any = {};
