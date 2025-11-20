@@ -184,13 +184,13 @@ async def download_video(request: DownloadRequest):
         ydl_opts = {
             'format': 'best[height<=720]/best',
             'outtmpl': filepath + '.%(ext)s',
-            'quiet': False,  # Enable output for debugging
-            'no_warnings': False,
+            'quiet': True,  # Reduce logging noise
+            'no_warnings': True,
             'max_filesize': 100 * 1024 * 1024,  # Increase to 100MB
             'noplaylist': True,
             'geo_bypass': True,
-            # Browser impersonation to avoid bot detection
-            'impersonate': 'chrome120',
+            # Try without impersonation first (may cause issues on Railway)
+            # 'impersonate': 'chrome120',
             # Enhanced headers to avoid bot detection
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -205,12 +205,13 @@ async def download_video(request: DownloadRequest):
                 'Sec-Fetch-Site': 'none',
                 'Sec-Fetch-User': '?1',
                 'Cache-Control': 'max-age=0',
+                'Referer': 'https://www.google.com/',
             },
             'extractor_args': {
                 'youtube': {
                     'skip': ['dash', 'hls'],
                     'player_skip': ['configs'],
-                    'player_client': ['android', 'web', 'ios'],
+                    'player_client': ['android', 'web'],
                 },
                 'tiktok': {
                     'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
@@ -219,12 +220,16 @@ async def download_video(request: DownloadRequest):
             'cookiefile': None,
             'age_limit': None,
             # Additional anti-bot measures
-            'sleep_interval': 1,
-            'max_sleep_interval': 5,
-            'sleep_interval_requests': 1,
+            'sleep_interval': 2,
+            'max_sleep_interval': 10,
+            'sleep_interval_requests': 2,
             # Retry configuration
-            'retries': 3,
-            'fragment_retries': 3,
+            'retries': 5,
+            'fragment_retries': 5,
+            # Force IPv4 to avoid IPv6 issues
+            'force_ipv4': True,
+            # Add random delays
+            'sleep_interval_subtitles': 1,
         }
         
         print(f"📁 Download path: {filepath}")
