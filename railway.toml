@@ -2,9 +2,6 @@
 [build]
   builder = "NIXPACKS"
 
-[deploy]
-  startCommand = "python3 backend/server.py"
-
 [env]
   PORT = "8080"
   PYTHONPATH = "/app"
