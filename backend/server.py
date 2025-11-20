@@ -154,7 +154,7 @@ def extract_frames_base64(video_path, num_frames=15):
     return frames
 
 # Endpoints
-@app.post("/upload")
+@app.post("/api/upload")
 async def upload_video_file(file: UploadFile = File(...)):
     try:
         file_id = str(uuid.uuid4())
@@ -172,7 +172,7 @@ async def upload_video_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
 
-@app.post("/download")
+@app.post("/api/download")
 async def download_video(request: DownloadRequest):
     try:
         print(f"📥 Download request received for URL: {request.url}")
