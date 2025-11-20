@@ -242,6 +242,7 @@ async def upload_video_file(file: UploadFile = File(...)):
 async def download_with_cobalt(url: str, file_id: str) -> dict:
     """
     Fallback download method using Cobalt API (for YouTube bot detection bypass)
+    FREE, open-source, no rate limits - automatic fallback when yt-dlp fails
     """
     print(f"🔄 Attempting Cobalt API fallback for: {url}")
     
