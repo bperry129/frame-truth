@@ -477,5 +477,21 @@ async def reset_rate_limit(request: Request):
 def health_check():
     return {"status": "ok"}
 
+@app.get("/api/check-ip")
+async def check_ip(request: Request):
+    """Debug endpoint to show detected IP address"""
+    client_ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0]
+    all_headers = dict(request.headers)
+    
+    return {
+        "detected_ip": client_ip,
+        "client_host": request.client.host,
+        "x_forwarded_for": request.headers.get("x-forwarded-for"),
+        "x_real_ip": request.headers.get("x-real-ip"),
+        "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
+        "all_headers": all_headers,
+        "is_whitelisted": client_ip in ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16", "173.239.214.13"] or client_ip.startswith(("127.", "192.168.", "10.", "172."))
+    }
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
