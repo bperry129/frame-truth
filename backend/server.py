@@ -133,17 +133,18 @@ def extract_frames_base64(video_path, num_frames=15):
             break
             
         if count % step == 0:
-            # Resize to save token usage/bandwidth
-            # Maintain aspect ratio, max width 512
+            # PHASE 1 IMPROVEMENT: Higher resolution and quality for better artifact detection
+            # Maintain aspect ratio, max width 1024 (was 512)
             height, width = frame.shape[:2]
-            MAX_WIDTH = 512
+            MAX_WIDTH = 1024
             if width > MAX_WIDTH:
                 scale = MAX_WIDTH / width
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 frame = cv2.resize(frame, (new_width, new_height))
             
-            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            # PHASE 1 IMPROVEMENT: Higher JPEG quality 95% (was 70%)
+            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
             b64 = base64.b64encode(buffer).decode('utf-8')
             frames.append(f"data:image/jpeg;base64,{b64}")
             extracted += 1
@@ -302,20 +303,26 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # Adaptive frame count based on video duration
-        if duration < 30:
-            num_frames = 30  # Dense sampling for short videos (Shorts, TikTok, Reels)
-            print(f"📹 Short video ({duration:.1f}s) - using 30 frames for better accuracy")
+        # PHASE 1 IMPROVEMENT: Adaptive frame count (50-100 frames for better accuracy)
+        if duration < 10:
+            num_frames = 50  # Very short clips (e.g., TikTok, Instagram Reels)
+            print(f"📹 Very short video ({duration:.1f}s) - using 50 frames for maximum accuracy")
+        elif duration < 30:
+            num_frames = 75  # Short videos (Shorts, brief clips)
+            print(f"📹 Short video ({duration:.1f}s) - using 75 frames for high accuracy")
+        elif duration < 60:
+            num_frames = 100  # Medium videos
+            print(f"📹 Medium video ({duration:.1f}s) - using 100 frames for comprehensive analysis")
         else:
-            num_frames = 15  # Standard sampling for longer videos
-            print(f"📹 Standard video ({duration:.1f}s) - using 15 frames")
+            num_frames = 100  # Longer videos - cap at 100 to balance cost/accuracy
+            print(f"📹 Long video ({duration:.1f}s) - using 100 frames (capped)")
         
         # 4. Extract Frames
         frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 5. Call AI API with neutral forensic prompt
+        # 5. Call AI API with enhanced forensic prompt (PHASE 1 IMPROVEMENT)
         prompt = """
     You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
     Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
@@ -328,6 +335,8 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Lighting consistency across frames
        - Object stability and position tracking
        - Background element behavior
+       - **MICRO-GLITCHES**: Subtle warping, morphing, or "swimming" of textures between frames
+       - **TEMPORAL ARTIFACTS**: Objects or details that flicker, appear/disappear, or shift unnaturally
 
     2. PHYSICS & MOTION ANALYSIS:
        - Gravity and momentum behavior (natural vs. impossible)
@@ -335,6 +344,8 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Reflection accuracy (mirrors, water, glass, metallic surfaces)
        - Depth perception and occlusion correctness
        - Material properties (weight, flexibility, rigidity)
+       - **MOTION SMOOTHNESS**: Too-perfect motion or floating/drifting movements
+       - **ACCELERATION**: Unnatural speed changes or momentum violations
 
     3. VISUAL QUALITY INDICATORS:
        - Texture consistency and detail stability
@@ -342,6 +353,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Facial features and proportions (natural vs. uncanny valley)
        - Pattern regularity in organic elements
        - Edge definition and boundary clarity
+       - **TEXTURE BOILING**: Fine details that seem to crawl, shimmer, or fluctuate
+       - **WATERCOLOR EFFECT**: Overly smooth, plastic-like, or painted appearance
+       - **EDGE COHERENCE**: Soft or bleeding edges around objects
 
     4. OBJECT & SCENE CONSISTENCY:
        - Object permanence through occlusion
@@ -349,6 +363,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Background stability and coherence
        - Anatomical accuracy (hands, fingers, body proportions)
        - Scene composition naturalness
+       - **ANATOMICAL TELLS**: Extra/missing fingers, impossible hand positions, morphing limbs
+       - **OBJECT MUTATIONS**: Items changing size, shape, or details between frames
+       - **BACKGROUND INSTABILITY**: Static elements that subtly shift or warp
 
     5. TECHNICAL SIGNATURES (Observable Patterns):
        - Camera artifacts (lens distortion, sensor noise, compression artifacts)
@@ -356,6 +373,39 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Focus behavior (depth of field, bokeh, autofocus hunting)
        - Color grading and dynamic range
        - Temporal artifacts or glitches
+       - **SENSOR NOISE**: Real cameras have grain; AI videos often too clean or artificial grain
+       - **ROLLING SHUTTER**: Real cameras show this effect; AI often doesn't
+       - **CHROMATIC ABERRATION**: Real lenses have color fringing; check if present/absent
+
+    6. 🚨 AI-SPECIFIC ARTIFACT CHECKLIST (Modern Generators):
+       
+       **Sora Tells:**
+       - Dreamlike, overly cinematic composition (too "perfect" framing)
+       - Slight ethereal or surreal quality to lighting
+       - Background elements that are impressively detailed but subtly inconsistent
+       - Smooth but slightly "floaty" motion, lacks weight
+       
+       **Runway Gen-3 Tells:**
+       - Corporate/commercial aesthetic (clean, polished, but sterile)
+       - Very smooth motion that can feel "computer-generated"
+       - Edges can be too sharp or too soft (not naturally in-between)
+       - Lighting often perfect but lacks natural imperfections
+       
+       **Pika/Kling Tells:**
+       - More obvious physics violations (exaggerated movements)
+       - Temporal glitches more common (brief warping or stuttering)
+       - Lower-fidelity artifacts in complex scenes
+       - Text/small details often garbled or morphing
+       
+       **Generic AI Tells to Watch For:**
+       - Lack of camera shake or imperfect framing
+       - Perfect lighting that doesn't match environment
+       - Faces that are too symmetrical or have "uncanny valley" feel
+       - Hair that moves unnaturally or as a single mass
+       - Fabric/clothing with unnatural physics (too stiff or too fluid)
+       - Repetitive or patterned elements in organic settings (trees, crowds)
+       - Missing or incorrect shadows/reflections
+       - Depth inconsistencies (foreground/background relationship wrong)
 
     📊 SCORING METHODOLOGY (Evidence-Based):
     
