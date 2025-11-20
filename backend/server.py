@@ -239,6 +239,72 @@ async def upload_video_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
 
+async def download_with_cobalt(url: str, file_id: str) -> dict:
+    """
+    Fallback download method using Cobalt API (for YouTube bot detection bypass)
+    """
+    print(f"🔄 Attempting Cobalt API fallback for: {url}")
+    
+    try:
+        # Cobalt API endpoint
+        cobalt_url = "https://co.wuk.sh/api/json"
+        
+        response = requests.post(cobalt_url, json={
+            "url": url,
+            "vCodec": "h264",
+            "vQuality": "720",
+            "aFormat": "mp3",
+            "filenamePattern": "basic",
+            "isAudioOnly": False
+        }, headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        })
+        
+        if response.status_code != 200:
+            raise Exception(f"Cobalt API error: {response.text}")
+        
+        data = response.json()
+        
+        if data.get("status") != "redirect" and data.get("status") != "stream":
+            raise Exception(f"Cobalt returned status: {data.get('status')}")
+        
+        # Download from Cobalt's provided URL
+        download_url = data.get("url")
+        if not download_url:
+            raise Exception("No download URL from Cobalt")
+        
+        print(f"📥 Downloading from Cobalt: {download_url}")
+        
+        video_response = requests.get(download_url, stream=True, timeout=120)
+        video_response.raise_for_status()
+        
+        # Save to file
+        filename = f"{file_id}.mp4"
+        filepath = os.path.join(DOWNLOAD_DIR, filename)
+        
+        with open(filepath, 'wb') as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        print(f"✅ Cobalt download successful: {filename}")
+        
+        # Return basic metadata
+        return {
+            "filename": filename,
+            "url": f"/videos/{filename}",
+            "meta": {
+                "title": "Video",
+                "uploader": "Unknown",
+                "source": "cobalt_api"
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Cobalt API failed: {str(e)}")
+        raise
+
 @app.post("/api/download")
 async def download_video(request: DownloadRequest):
     try:
@@ -352,21 +418,38 @@ async def download_video(request: DownloadRequest):
 
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Error: {error_msg}")
+        print(f"❌ Primary download method failed: {error_msg}")
         
-        # Provide helpful message for YouTube bot detection
-        if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
-            helpful_msg = (
-                "YouTube is blocking automated downloads due to bot detection. "
-                "This is a temporary YouTube limitation. "
-                "\n\nWorkaround: Please download the video to your device first, then upload it using the 'Upload File' tab. "
-                "\n\nAlternatively, try a different video platform (TikTok, Instagram, Facebook) or wait and try again later."
-            )
-            return JSONResponse(status_code=400, content={
-                "detail": helpful_msg,
-                "error_type": "youtube_bot_detection"
-            })
+        # Check if this is a YouTube bot detection error
+        is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
+        is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
         
+        if is_youtube and is_bot_error:
+            print(f"🔄 YouTube bot detection - attempting Cobalt API fallback...")
+            
+            try:
+                # Try Cobalt API as fallback
+                result = await download_with_cobalt(request.url, file_id)
+                print(f"✅ Cobalt API fallback successful!")
+                return result
+                
+            except Exception as cobalt_error:
+                print(f"❌ Cobalt API fallback also failed: {str(cobalt_error)}")
+                
+                # Both methods failed - provide helpful message
+                helpful_msg = (
+                    "YouTube download failed using multiple methods. "
+                    "\n\n**Workaround:** Please download the video to your device first, then upload it using the 'Upload File' tab. "
+                    "\n\nAlternatively, try a different video platform (TikTok, Instagram, Twitter work well)."
+                )
+                return JSONResponse(status_code=400, content={
+                    "detail": helpful_msg,
+                    "error_type": "youtube_all_methods_failed",
+                    "primary_error": error_msg,
+                    "fallback_error": str(cobalt_error)
+                })
+        
+        # Non-YouTube error or non-bot error
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
 
 @app.post("/api/analyze")
