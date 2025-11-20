@@ -189,6 +189,8 @@ async def download_video(request: DownloadRequest):
             'max_filesize': 100 * 1024 * 1024,  # Increase to 100MB
             'noplaylist': True,
             'geo_bypass': True,
+            # Browser impersonation to avoid bot detection
+            'impersonate': 'chrome120',
             # Enhanced headers to avoid bot detection
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -208,7 +210,10 @@ async def download_video(request: DownloadRequest):
                 'youtube': {
                     'skip': ['dash', 'hls'],
                     'player_skip': ['configs'],
-                    'player_client': ['android', 'web'],
+                    'player_client': ['android', 'web', 'ios'],
+                },
+                'tiktok': {
+                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
                 }
             },
             'cookiefile': None,
@@ -217,6 +222,9 @@ async def download_video(request: DownloadRequest):
             'sleep_interval': 1,
             'max_sleep_interval': 5,
             'sleep_interval_requests': 1,
+            # Retry configuration
+            'retries': 3,
+            'fragment_retries': 3,
         }
         
         print(f"📁 Download path: {filepath}")
