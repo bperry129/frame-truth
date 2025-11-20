@@ -9,7 +9,10 @@
     },
     {
       "src": "backend/server.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
@@ -26,10 +29,5 @@
     "OPENROUTER_API_KEY": "@openrouter_api_key",
     "ADMIN_USER": "@admin_user",
     "ADMIN_PASS": "@admin_pass"
-  },
-  "functions": {
-    "backend/server.py": {
-      "maxDuration": 30
-    }
   }
 }
