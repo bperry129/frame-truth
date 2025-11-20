@@ -7,6 +7,7 @@ import cv2
 import base64
 import requests
 import shutil
+import numpy as np
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File
@@ -179,6 +180,96 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
             'confidence_boost': 0,
             'score_increase': 0
         }
+
+def calculate_trajectory_metrics(video_path, num_samples=24):
+    """
+    Calculate lightweight trajectory metrics inspired by ReStraV paper.
+    Measures temporal curvature and distance without requiring DINOv2.
+    Returns dict with mean_curvature, curvature_variance, mean_distance.
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        if total_frames <= 0:
+            cap.release()
+            return None
+        
+        # Sample frames evenly
+        step = max(1, total_frames // num_samples)
+        
+        # Extract grayscale frames for efficient processing
+        frames_gray = []
+        count = 0
+        extracted = 0
+        
+        while cap.isOpened() and extracted < num_samples:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % step == 0:
+                # Convert to grayscale and resize for efficiency
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                gray = cv2.resize(gray, (224, 224))
+                frames_gray.append(gray.flatten().astype(np.float32))
+                extracted += 1
+                
+            count += 1
+        
+        cap.release()
+        
+        if len(frames_gray) < 3:
+            return None
+        
+        # Convert to numpy array
+        frames_array = np.array(frames_gray)
+        
+        # Calculate displacement vectors (frame-to-frame changes)
+        displacements = np.diff(frames_array, axis=0)
+        
+        # Calculate stepwise distances (magnitude of change)
+        distances = np.linalg.norm(displacements, axis=1)
+        
+        # Calculate curvature (angle between consecutive displacement vectors)
+        curvatures = []
+        for i in range(len(displacements) - 1):
+            vec1 = displacements[i]
+            vec2 = displacements[i + 1]
+            
+            # Normalize vectors
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
+            
+            if norm1 > 0 and norm2 > 0:
+                # Calculate cosine similarity
+                cos_sim = np.dot(vec1, vec2) / (norm1 * norm2)
+                # Clamp to [-1, 1] to avoid numerical errors
+                cos_sim = np.clip(cos_sim, -1.0, 1.0)
+                # Convert to angle in degrees
+                angle = np.arccos(cos_sim) * 180 / np.pi
+                curvatures.append(angle)
+        
+        if len(curvatures) == 0:
+            return None
+        
+        # Calculate statistics
+        mean_curvature = float(np.mean(curvatures))
+        curvature_variance = float(np.var(curvatures))
+        mean_distance = float(np.mean(distances))
+        max_curvature = float(np.max(curvatures))
+        
+        return {
+            'mean_curvature': mean_curvature,
+            'curvature_variance': curvature_variance,
+            'mean_distance': mean_distance,
+            'max_curvature': max_curvature,
+            'num_samples': len(frames_gray)
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Trajectory calculation failed: {str(e)}")
+        return None
 
 def extract_frames_base64(video_path, num_frames=15):
     frames = []
@@ -575,7 +666,27 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             num_frames = 100  # Longer videos - cap at 100 to balance cost/accuracy
             print(f"📹 Long video ({duration:.1f}s) - using 100 frames (capped)")
         
-        # 4. Scan metadata for AI keywords (if URL provided)
+        # 4. ReStraV-inspired trajectory analysis (lightweight, pixel-space)
+        print(f"📐 Calculating trajectory metrics (ReStraV method)...")
+        trajectory_metrics = calculate_trajectory_metrics(filepath, num_samples=24)
+        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False}
+        
+        if trajectory_metrics:
+            mean_curv = trajectory_metrics['mean_curvature']
+            curv_var = trajectory_metrics['curvature_variance']
+            
+            # ReStraV insight: AI videos have HIGHER mean curvature (less straight trajectories)
+            # Natural videos: mean_curvature typically 40-60°, AI: 80-120°
+            if mean_curv > 80:  # High curvature = likely AI
+                trajectory_boost['score_increase'] = min(25, int((mean_curv - 80) / 2))  # Up to +25
+                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 80) / 3))  # Up to +15
+                trajectory_boost['has_high_curvature'] = True
+                print(f"⚠️ HIGH TRAJECTORY CURVATURE DETECTED: {mean_curv:.1f}° (AI indicator)")
+                print(f"   Curvature boost: +{trajectory_boost['score_increase']} to score, +{trajectory_boost['confidence_boost']} to confidence")
+            else:
+                print(f"✓ Normal trajectory curvature: {mean_curv:.1f}° (natural video indicator)")
+        
+        # 5. Scan metadata for AI keywords (if URL provided)
         metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
         if data.original_url and data.original_url.strip():
             print(f"🔍 Scanning metadata for AI keywords in URL: {data.original_url}")
@@ -584,7 +695,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                 print(f"⚠️ AI KEYWORDS DETECTED: {metadata_scan['keywords_found']}")
                 print(f"   Score boost: +{metadata_scan['score_increase']}, Confidence boost: +{metadata_scan['confidence_boost']}")
         
-        # 5. Extract Frames
+        # 6. Extract Frames
         frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
@@ -824,7 +935,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                  "HTTP-Referer": "https://frametruth.com",
              },
              json={
-                 "model": "google/gemini-exp-1206",
+                 "model": "google/gemini-3-pro-preview",
                  "messages": [{"role": "user", "content": content_parts}],
                  "response_format": {"type": "json_object"}
              }
@@ -838,7 +949,22 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 7. Apply metadata-based score adjustments
+        # 7. Apply ReStraV trajectory-based score adjustments
+        if trajectory_boost['has_high_curvature']:
+            original_curvature = analysis_result.get('curvatureScore', 0)
+            original_confidence = analysis_result.get('confidence', 0)
+            
+            # Boost scores based on high trajectory curvature
+            analysis_result['curvatureScore'] = min(100, original_curvature + trajectory_boost['score_increase'])
+            analysis_result['confidence'] = min(100, original_confidence + trajectory_boost['confidence_boost'])
+            
+            # Add trajectory info to reasoning
+            if trajectory_metrics:
+                analysis_result['reasoning'].insert(0, f"📐 ReStraV Analysis: High temporal trajectory curvature detected ({trajectory_metrics['mean_curvature']:.1f}°), indicating irregular frame-to-frame transitions characteristic of AI-generated content")
+            
+            print(f"📊 Trajectory-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
+        
+        # 8. Apply metadata-based score adjustments
         if metadata_scan['has_ai_keywords']:
             original_curvature = analysis_result.get('curvatureScore', 0)
             original_confidence = analysis_result.get('confidence', 0)
@@ -855,7 +981,11 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             keyword_list = ', '.join(metadata_scan['keywords_found'][:5])  # Show first 5
             analysis_result['reasoning'].insert(0, f"⚠️ METADATA ALERT: Video contains AI-related keywords in title/description/tags: {keyword_list}")
             
-            print(f"📊 Scores adjusted: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
+            print(f"📊 Metadata-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
+        
+        # 9. Final AI determination based on combined signals
+        if analysis_result.get('curvatureScore', 0) >= 65:
+            analysis_result['isAi'] = True
 
         # 8. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
