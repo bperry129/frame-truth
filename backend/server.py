@@ -90,21 +90,29 @@ class SaveSubmissionRequest(BaseModel):
 
 # Helpers
 def check_rate_limit(ip: str) -> bool:
-    # Whitelist localhost, local development IPs, and specific user IPs
-    local_ips = ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16", "173.239.214.13"]
-    if ip in local_ips or ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
-        print(f"✓ Whitelisted IP: {ip} - bypassing rate limit")
-        return True
+    # TEMPORARILY DISABLE RATE LIMITING FOR DEBUGGING
+    print(f"🔓 RATE LIMITING DISABLED - IP: {ip} - bypassing all limits")
+    return True
+    
+    # Original rate limiting code (commented out for debugging)
+    # # Whitelist localhost, local development IPs, and specific user IPs
+    # local_ips = ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16", "173.239.214.13"]
+    # # Also whitelist entire 173.239.x.x range
+    # if (ip in local_ips or 
+    #     ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.") or
+    #     ip.startswith("173.239.")):
+    #     print(f"✓ Whitelisted IP: {ip} - bypassing rate limit")
+    #     return True
 
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    # Rate limit: 5 per day
-    one_day_ago = (datetime.now() - timedelta(days=1)).isoformat()
-    c.execute("SELECT count(*) FROM submissions WHERE ip_address = ? AND created_at > ?", (ip, one_day_ago))
-    count = c.fetchone()[0]
-    conn.close()
-    print(f"Rate limit check for {ip}: {count}/5 submissions today")
-    return count < 5
+    # conn = sqlite3.connect(DB_NAME)
+    # c = conn.cursor()
+    # # Rate limit: 5 per day
+    # one_day_ago = (datetime.now() - timedelta(days=1)).isoformat()
+    # c.execute("SELECT count(*) FROM submissions WHERE ip_address = ? AND created_at > ?", (ip, one_day_ago))
+    # count = c.fetchone()[0]
+    # conn.close()
+    # print(f"Rate limit check for {ip}: {count}/5 submissions today")
+    # return count < 5
 
 def extract_frames_base64(video_path, num_frames=15):
     frames = []
