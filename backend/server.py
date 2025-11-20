@@ -18,6 +18,8 @@ import yt_dlp
 
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS")
 
 # Verify API key is loaded
 if not OPENROUTER_API_KEY:
@@ -26,10 +28,14 @@ if not OPENROUTER_API_KEY:
 else:
     print(f"✓ API Key loaded: {OPENROUTER_API_KEY[:20]}...")
 
-app = FastAPI()
+# Verify admin credentials are loaded
+if not ADMIN_PASS:
+    print("WARNING: ADMIN_PASS not found in .env file!")
+    print("Please add ADMIN_PASS=your_secure_password to backend/.env")
+else:
+    print(f"✓ Admin credentials loaded for user: {ADMIN_USER}")
 
-ADMIN_USER = "admin"
-ADMIN_PASS = "admin123"
+app = FastAPI()
 
 # Configure CORS
 app.add_middleware(
@@ -84,8 +90,10 @@ class SaveSubmissionRequest(BaseModel):
 
 # Helpers
 def check_rate_limit(ip: str) -> bool:
-    # Whitelist localhost
-    if ip == "127.0.0.1" or ip == "localhost":
+    # Whitelist localhost and local development IPs
+    local_ips = ["127.0.0.1", "localhost", "::1", "0.0.0.0", "192.168.1.16"]
+    if ip in local_ips or ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
+        print(f"✓ Whitelisted IP: {ip} - bypassing rate limit")
         return True
 
     conn = sqlite3.connect(DB_NAME)
@@ -95,6 +103,7 @@ def check_rate_limit(ip: str) -> bool:
     c.execute("SELECT count(*) FROM submissions WHERE ip_address = ? AND created_at > ?", (ip, one_day_ago))
     count = c.fetchone()[0]
     conn.close()
+    print(f"Rate limit check for {ip}: {count}/5 submissions today")
     return count < 5
 
 def extract_frames_base64(video_path, num_frames=15):
@@ -158,62 +167,97 @@ async def upload_video_file(file: UploadFile = File(...)):
 @app.post("/download")
 async def download_video(request: DownloadRequest):
     try:
+        print(f"📥 Download request received for URL: {request.url}")
+        
         file_id = str(uuid.uuid4())
-        filename = f"{file_id}.mp4"
-        filepath = os.path.join(DOWNLOAD_DIR, filename)
+        filename = f"{file_id}.%(ext)s"  # Let yt-dlp determine the extension
+        filepath = os.path.join(DOWNLOAD_DIR, f"{file_id}")
         
         ydl_opts = {
-            'format': 'best', # Let yt-dlp decide best quality (cv2 matches most formats)
-            'outtmpl': filepath,
-            'quiet': True,
-            'no_warnings': True,
-            'max_filesize': 50 * 1024 * 1024, # 50MB
+            'format': 'best[height<=720]/best',
+            'outtmpl': filepath + '.%(ext)s',
+            'quiet': False,  # Enable output for debugging
+            'no_warnings': False,
+            'max_filesize': 100 * 1024 * 1024,  # Increase to 100MB
             'noplaylist': True,
             'geo_bypass': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            # Add headers and options to avoid 403 errors
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                'Connection': 'keep-alive',
+            },
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['dash', 'hls'],
+                    'player_skip': ['configs'],
+                }
+            },
+            'cookiefile': None,
+            'age_limit': None,
         }
         
+        print(f"📁 Download path: {filepath}")
+        
         meta_info = {}
+        actual_filename = None
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info and download
             try:
+                print("🔍 Extracting video info...")
                 info = ydl.extract_info(request.url, download=True)
+                
+                # Get the actual filename that was created
+                ext = info.get('ext', 'mp4')
+                actual_filename = f"{file_id}.{ext}"
+                actual_filepath = os.path.join(DOWNLOAD_DIR, actual_filename)
+                
                 meta_info = {
-                    "title": info.get("title"),
-                    "uploader": info.get("uploader"),
+                    "title": info.get("title", "Unknown"),
+                    "uploader": info.get("uploader", "Unknown"),
                     "duration": info.get("duration"),
                     "view_count": info.get("view_count")
                 }
+                
+                print(f"✅ Download completed: {actual_filename}")
+                print(f"📊 Video info: {meta_info['title']} by {meta_info['uploader']}")
+                
             except Exception as e:
-                # Fallback if extraction fails but download might work?
-                # Usually extract_info throws if download fails.
+                print(f"❌ yt-dlp error: {str(e)}")
                 raise e
 
-        if not os.path.exists(filepath):
-             return JSONResponse(status_code=400, content={"detail": "Download failed: File not created"})
+        # Check if file was created (with any extension)
+        created_files = [f for f in os.listdir(DOWNLOAD_DIR) if f.startswith(file_id)]
+        if not created_files:
+            print(f"❌ No files created with ID: {file_id}")
+            return JSONResponse(status_code=400, content={"detail": "Download failed: No file was created"})
+        
+        # Use the first file found (should only be one)
+        actual_filename = created_files[0]
+        print(f"📄 Found created file: {actual_filename}")
         
         return {
-            "filename": filename,
-            "url": f"http://localhost:8000/videos/{filename}",
-            "meta": meta_info
-        }
-
-        if not os.path.exists(filepath):
-             return JSONResponse(status_code=400, content={"detail": "Download failed: File not created"})
-        
-        return {
-            "filename": filename,
-            "url": f"http://localhost:8000/videos/{filename}",
+            "filename": actual_filename,
+            "url": f"http://localhost:8000/videos/{actual_filename}",
             "meta": meta_info
         }
 
     except Exception as e:
-        return JSONResponse(status_code=400, content={"detail": f"Download failed: {str(e)}"})
+        error_msg = f"Download failed: {str(e)}"
+        print(f"❌ Error: {error_msg}")
+        return JSONResponse(status_code=400, content={"detail": error_msg})
 
 @app.post("/api/analyze")
 async def analyze_video(request: Request, data: AnalyzeRequest):
     # 1. Check Rate Limit
     client_ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0]
+    print(f"🔍 Client IP detected: {client_ip}")
+    print(f"🔍 Request client host: {request.client.host}")
+    print(f"🔍 X-Forwarded-For header: {request.headers.get('x-forwarded-for')}")
+    
     if not check_rate_limit(client_ip):
          raise HTTPException(status_code=429, detail="Daily submission limit reached (5/5). Contact admin@frametruth.com for access.")
 
@@ -408,6 +452,25 @@ async def get_submission(submission_id: str):
         "original_url": row["original_url"],
         "analysis_result": json.loads(row["analysis_result"]),
         "created_at": row["created_at"]
+    }
+
+@app.post("/api/reset-rate-limit")
+async def reset_rate_limit(request: Request):
+    """Development endpoint to reset rate limit for current IP"""
+    client_ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0]
+    
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM submissions WHERE ip_address = ?", (client_ip,))
+    deleted_count = c.rowcount
+    conn.commit()
+    conn.close()
+    
+    print(f"🔄 Reset rate limit for IP {client_ip}: deleted {deleted_count} submissions")
+    
+    return {
+        "message": f"Rate limit reset for IP {client_ip}",
+        "deleted_submissions": deleted_count
     }
 
 @app.get("/docs")

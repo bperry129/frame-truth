@@ -6,41 +6,129 @@ import Blog from './components/Blog';
 import History from './components/History';
 import AdminLogin from './components/AdminLogin';
 import HomeFeatures from './components/HomeFeatures';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfService from './components/TermsOfService';
+import SubmitFeedback from './components/SubmitFeedback';
+import BountyChallenge, { BountyFloatingButton } from './components/BountyChallenge';
 import { analyzeVideo } from './services/gemini';
 import { downloadVideo } from './services/downloader';
 import { saveSubmission, getSubmission, uploadFile } from './services/api';
 import { AnalysisResult, AnalysisStatus, VideoMetadata } from './types';
-import { UploadCloud, Youtube, Loader2, PlayCircle, AlertCircle, Link as LinkIcon, CheckCircle2, RefreshCw, Hash, Lock } from 'lucide-react';
+import { UploadCloud, Youtube, Loader2, PlayCircle, AlertCircle, Link as LinkIcon, CheckCircle2, RefreshCw, Hash, Lock, Clock } from 'lucide-react';
 
-const LimitModal = ({ onClose }: { onClose: () => void }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
-    <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden p-8 text-center">
-      <div className="w-16 h-16 bg-indigo-500/10 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-indigo-500/50">
-        <Lock className="w-8 h-8 text-indigo-400" />
+// Rate limiting utilities
+interface RateLimitData {
+  count: number;
+  resetTime: number;
+}
+
+const RATE_LIMIT_KEY = 'frametruth_submissions';
+const DAILY_LIMIT = 5;
+const RESET_HOURS = 24;
+
+const getRateLimitData = (): RateLimitData => {
+  try {
+    const stored = localStorage.getItem(RATE_LIMIT_KEY);
+    if (!stored) return { count: 0, resetTime: Date.now() + (RESET_HOURS * 60 * 60 * 1000) };
+    
+    const data = JSON.parse(stored);
+    
+    // Check if reset time has passed
+    if (Date.now() >= data.resetTime) {
+      return { count: 0, resetTime: Date.now() + (RESET_HOURS * 60 * 60 * 1000) };
+    }
+    
+    return data;
+  } catch {
+    return { count: 0, resetTime: Date.now() + (RESET_HOURS * 60 * 60 * 1000) };
+  }
+};
+
+const updateRateLimitData = (data: RateLimitData) => {
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(data));
+};
+
+const incrementSubmissionCount = (): boolean => {
+  const data = getRateLimitData();
+  
+  if (data.count >= DAILY_LIMIT) {
+    return false; // Limit exceeded
+  }
+  
+  data.count += 1;
+  updateRateLimitData(data);
+  return true;
+};
+
+const formatTimeRemaining = (resetTime: number): string => {
+  const now = Date.now();
+  const remaining = resetTime - now;
+  
+  if (remaining <= 0) return "0h 0m";
+  
+  const hours = Math.floor(remaining / (1000 * 60 * 60));
+  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+  
+  return `${hours}h ${minutes}m`;
+};
+
+const LimitModal = ({ onClose }: { onClose: () => void }) => {
+  const [timeRemaining, setTimeRemaining] = useState('');
+  
+  useEffect(() => {
+    const updateTimer = () => {
+      const data = getRateLimitData();
+      setTimeRemaining(formatTimeRemaining(data.resetTime));
+    };
+    
+    updateTimer();
+    const interval = setInterval(updateTimer, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+      <div className="bg-slate-900 border border-red-500/30 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden p-8 text-center">
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-red-500/50">
+          <Lock className="w-8 h-8 text-red-400" />
+        </div>
+        <h3 className="text-2xl font-bold text-white mb-2">Daily Limit Reached</h3>
+        <p className="text-slate-400 mb-6">
+          You've reached your daily limit of <strong className="text-red-400">5 submissions</strong>. 
+          Please wait 24 hours before uploading again.
+        </p>
+        
+        <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-6">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-orange-400" />
+            <p className="text-sm text-slate-300 font-medium">Reset in:</p>
+          </div>
+          <p className="text-xl font-bold text-orange-400 mb-3">{timeRemaining}</p>
+          <p className="text-xs text-slate-500">Your submission count will reset automatically</p>
+        </div>
+
+        <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-6">
+          <p className="text-sm text-slate-300 font-medium mb-1">Need higher limits?</p>
+          <p className="text-xs text-slate-500 mb-2">Contact us for enterprise API access:</p>
+          <a href="mailto:admin@frametruth.com" className="text-cyan-400 hover:text-cyan-300 font-mono text-sm underline">
+            admin@frametruth.com
+          </a>
+        </div>
+        
+        <button 
+          onClick={onClose}
+          className="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium py-2.5 rounded-lg transition-colors ring-1 ring-slate-700"
+        >
+          Close
+        </button>
       </div>
-      <h3 className="text-2xl font-bold text-white mb-2">Daily Limit Reached</h3>
-      <p className="text-slate-400 mb-6">
-        This beta demo is limited to <strong className="text-indigo-400">5 submissions per day</strong> to maintain service quality.
-      </p>
-      <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 mb-6">
-        <p className="text-sm text-slate-300 font-medium mb-1">Need higher limits?</p>
-        <p className="text-xs text-slate-500">Contact us for enterprise API access:</p>
-        <a href="mailto:admin@frametruth.com" className="text-indigo-400 hover:text-indigo-300 font-mono text-sm mt-1 block underline">
-          admin@frametruth.com
-        </a>
-      </div>
-      <button 
-        onClick={onClose}
-        className="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium py-2.5 rounded-lg transition-colors ring-1 ring-slate-700"
-      >
-        Close
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<'home' | 'methodology' | 'blog' | 'admin'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'methodology' | 'blog' | 'admin' | 'feedback' | 'privacy' | 'terms'>('home');
   const [adminAuth, setAdminAuth] = useState<{ user: string; pass: string } | null>(null);
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [loadingMessage, setLoadingMessage] = useState<string>('');
@@ -52,6 +140,8 @@ const App: React.FC = () => {
   const [linkUrl, setLinkUrl] = useState('');
   // Store backend filename for DB saving
   const [backendFilename, setBackendFilename] = useState<string | null>(null);
+  // Bounty challenge state
+  const [showBountyChallenge, setShowBountyChallenge] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +201,12 @@ const App: React.FC = () => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Check rate limit first
+    if (!incrementSubmissionCount()) {
+      setError("Daily submission limit reached. Please wait 24 hours before uploading again.");
+      return;
+    }
 
     // Basic validation
     if (file.size > 50 * 1024 * 1024) { // 50MB limit for browser performance
@@ -174,6 +270,12 @@ const App: React.FC = () => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
         if (file && file.type.startsWith('video/')) {
+            // Check rate limit first
+            if (!incrementSubmissionCount()) {
+                setError("Daily submission limit reached. Please wait 24 hours before uploading again.");
+                return;
+            }
+
             if (file.size > 50 * 1024 * 1024) {
                 setError("File size too large. Please use videos under 50MB.");
                 return;
@@ -209,6 +311,12 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!linkUrl.trim()) return;
     
+    // Check rate limit first
+    if (!incrementSubmissionCount()) {
+      setError("Daily submission limit reached. Please wait 24 hours before uploading again.");
+      return;
+    }
+
     setError(null);
     setVideoMeta(null);
     setResult(null);
@@ -263,6 +371,12 @@ const App: React.FC = () => {
         <Methodology />
       ) : currentPage === 'blog' ? (
         <Blog />
+      ) : currentPage === 'feedback' ? (
+        <SubmitFeedback />
+      ) : currentPage === 'privacy' ? (
+        <PrivacyPolicy />
+      ) : currentPage === 'terms' ? (
+        <TermsOfService />
       ) : currentPage === 'admin' ? (
         !adminAuth ? (
             <AdminLogin onLogin={(user, pass) => setAdminAuth({ user, pass })} />
@@ -399,6 +513,28 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Important Notes - Professional Design */}
+          <div className="bg-gradient-to-r from-slate-900/80 to-slate-800/80 border border-slate-700/50 rounded-xl p-6 mb-8 backdrop-blur-sm">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0 ring-1 ring-blue-500/20">
+                <AlertCircle className="w-5 h-5 text-blue-400" />
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-white font-semibold text-base">Detection Guidelines</h3>
+                <div className="space-y-2 text-sm text-slate-300 leading-relaxed">
+                  <p className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></span>
+                    Videos containing both real and AI-generated content will be classified as AI-generated
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0"></span>
+                    Animated content may occasionally be misclassified as AI-generated
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
           
           {/* Keyword Rich Features Section */}
           {!result && <HomeFeatures />}
@@ -461,16 +597,125 @@ const App: React.FC = () => {
       )}
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 py-8 mt-12 text-center">
-        <p className="text-slate-600 text-sm mb-2">
-          Based on the paper "AI-Generated Video Detection via Perceptual Straightening" (Internò et al., 2025).
-          <br/>
-          Powered by Gemini for semantic analysis.
-        </p>
-        <div className="text-xs text-slate-700 mt-4">
-           Detect AI Video | Deepfake Detector | Video Forensics Tool
+      <footer className="border-t border-slate-900 py-12 mt-16">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="grid md:grid-cols-4 gap-8 mb-8">
+            {/* Company Info */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-cyan-500 blur-md opacity-20 rounded-full"></div>
+                  <div className="w-6 h-6 bg-cyan-400 rounded-full relative z-10"></div>
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                  FrameTruth
+                </h3>
+              </div>
+              <p className="text-slate-400 text-sm mb-4 max-w-md">
+                Advanced AI video detection using forensic trajectory analysis. 
+                Verify video authenticity instantly with our cutting-edge deepfake detection technology.
+              </p>
+              <div className="flex items-center gap-2 text-slate-500 text-sm">
+                <span>Contact:</span>
+                <a href="mailto:admin@frametruth.com" className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                  admin@frametruth.com
+                </a>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div>
+              <h4 className="text-white font-medium mb-4">Quick Links</h4>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <button 
+                    onClick={() => setCurrentPage('home')} 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    AI Detector
+                  </button>
+                </li>
+                <li>
+                  <button 
+                    onClick={() => setCurrentPage('methodology')} 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    Methodology
+                  </button>
+                </li>
+                <li>
+                  <a 
+                    href="https://arxiv.org/abs/2501.16382" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    Research Paper
+                  </a>
+                </li>
+                <li>
+                  <button 
+                    onClick={() => setCurrentPage('feedback')} 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    Submit Feedback
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <h4 className="text-white font-medium mb-4">Legal</h4>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <button 
+                    onClick={() => setCurrentPage('privacy')} 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    Privacy Policy
+                  </button>
+                </li>
+                <li>
+                  <button 
+                    onClick={() => setCurrentPage('terms')} 
+                    className="text-slate-400 hover:text-cyan-400 transition-colors"
+                  >
+                    Terms of Service
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom Section */}
+          <div className="border-t border-slate-800 pt-8">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="text-slate-600 text-sm text-center md:text-left">
+                <p className="mb-1">
+                  Based on "AI-Generated Video Detection via Perceptual Straightening" (Internò et al., 2025)
+                </p>
+                <p>Powered by Google Gemini for semantic analysis</p>
+              </div>
+              <div className="text-xs text-slate-700 text-center md:text-right">
+                <p>Detect AI Video | Deepfake Detector | Video Forensics Tool</p>
+                <p className="mt-1">© 2025 FrameTruth. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </footer>
+
+      {/* Bounty Challenge Components */}
+      {currentPage === 'home' && (
+        <>
+          <BountyFloatingButton onClick={() => setShowBountyChallenge(true)} />
+          <BountyChallenge 
+            isOpen={showBountyChallenge} 
+            onClose={() => setShowBountyChallenge(false)} 
+          />
+        </>
+      )}
     </div>
   );
 };

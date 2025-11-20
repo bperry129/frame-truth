@@ -1,9 +1,9 @@
 import React from 'react';
-import { ShieldCheck, ScanEye } from 'lucide-react';
+import { ShieldCheck, ScanEye, MessageSquare } from 'lucide-react';
 
 interface HeaderProps {
-  onNavigate: (page: 'home' | 'methodology' | 'blog' | 'admin') => void;
-  currentPage: 'home' | 'methodology' | 'blog' | 'admin';
+  onNavigate: (page: 'home' | 'methodology' | 'blog' | 'admin' | 'feedback' | 'privacy' | 'terms') => void;
+  currentPage: 'home' | 'methodology' | 'blog' | 'admin' | 'feedback' | 'privacy' | 'terms';
 }
 
 const Header: React.FC<HeaderProps> = ({ onNavigate, currentPage }) => {
@@ -37,6 +37,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, currentPage }) => {
             Methodology
           </button>
           <a href="https://arxiv.org/abs/2501.16382" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Paper</a>
+          <button 
+            onClick={() => onNavigate('feedback')} 
+            className={`transition-colors flex items-center gap-1 ${currentPage === 'feedback' ? 'text-cyan-400' : 'hover:text-cyan-400'}`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Feedback
+          </button>
           <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             <span className="text-slate-300">System Active</span>
