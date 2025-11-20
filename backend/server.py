@@ -114,6 +114,67 @@ def check_rate_limit(ip: str) -> bool:
     # print(f"Rate limit check for {ip}: {count}/5 submissions today")
     # return count < 5
 
+def scan_metadata_for_ai_keywords(url: str) -> dict:
+    """
+    Scan video metadata (from URL) for AI-related keywords.
+    Returns dict with detected keywords and confidence boost.
+    """
+    ai_keywords = [
+        # AI Generators
+        'sora', 'runway', 'pika', 'kling', 'midjourney', 'stable diffusion',
+        'gen-3', 'gen-2', 'luma', 'haiper', 'synthesia',
+        
+        # AI-related terms
+        'ai generated', 'ai-generated', 'ai video', 'artificial intelligence',
+        'machine learning', 'deep learning', 'neural network',
+        'text-to-video', 'text to video', 'video generation',
+        'generative ai', 'synthetic', 'computer generated',
+        
+        # Common AI hashtags
+        '#aigenerated', '#aiart', '#aivideo', '#texttovideo',
+        '#runwayml', '#soraai', '#aitools', '#generativeai'
+    ]
+    
+    try:
+        with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            title = (info.get('title') or '').lower()
+            description = (info.get('description') or '').lower()
+            tags = [tag.lower() for tag in (info.get('tags') or [])]
+            
+            # Combine all text for searching
+            all_text = f"{title} {description} {' '.join(tags)}"
+            
+            detected = []
+            for keyword in ai_keywords:
+                if keyword in all_text:
+                    detected.append(keyword)
+            
+            if detected:
+                # High confidence boost if AI keywords found
+                return {
+                    'has_ai_keywords': True,
+                    'keywords_found': detected,
+                    'confidence_boost': 40,  # Significant boost
+                    'score_increase': 35  # Increase curvature score
+                }
+            else:
+                return {
+                    'has_ai_keywords': False,
+                    'keywords_found': [],
+                    'confidence_boost': 0,
+                    'score_increase': 0
+                }
+    except:
+        # If metadata extraction fails, return neutral
+        return {
+            'has_ai_keywords': False,
+            'keywords_found': [],
+            'confidence_boost': 0,
+            'score_increase': 0
+        }
+
 def extract_frames_base64(video_path, num_frames=15):
     frames = []
     cap = cv2.VideoCapture(video_path)
@@ -248,7 +309,10 @@ async def download_video(request: DownloadRequest):
                     "title": info.get("title", "Unknown"),
                     "uploader": info.get("uploader", "Unknown"),
                     "duration": info.get("duration"),
-                    "view_count": info.get("view_count")
+                    "view_count": info.get("view_count"),
+                    "description": info.get("description", ""),
+                    "tags": info.get("tags", []),
+                    "categories": info.get("categories", [])
                 }
                 
                 print(f"✅ Download completed: {actual_filename}")
@@ -317,12 +381,21 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             num_frames = 100  # Longer videos - cap at 100 to balance cost/accuracy
             print(f"📹 Long video ({duration:.1f}s) - using 100 frames (capped)")
         
-        # 4. Extract Frames
+        # 4. Scan metadata for AI keywords (if URL provided)
+        metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
+        if data.original_url and data.original_url.strip():
+            print(f"🔍 Scanning metadata for AI keywords in URL: {data.original_url}")
+            metadata_scan = scan_metadata_for_ai_keywords(data.original_url)
+            if metadata_scan['has_ai_keywords']:
+                print(f"⚠️ AI KEYWORDS DETECTED: {metadata_scan['keywords_found']}")
+                print(f"   Score boost: +{metadata_scan['score_increase']}, Confidence boost: +{metadata_scan['confidence_boost']}")
+        
+        # 5. Extract Frames
         frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 5. Call AI API with enhanced forensic prompt (PHASE 1 IMPROVEMENT)
+        # 6. Call AI API with enhanced forensic prompt (PHASE 1 IMPROVEMENT)
         prompt = """
     You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
     Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
@@ -377,25 +450,54 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - **ROLLING SHUTTER**: Real cameras show this effect; AI often doesn't
        - **CHROMATIC ABERRATION**: Real lenses have color fringing; check if present/absent
 
-    6. 🚨 AI-SPECIFIC ARTIFACT CHECKLIST (Modern Generators):
+    6. 🚨 TEXT/LETTER ANALYSIS (CRITICAL AI INDICATOR - HIGH WEIGHT):
+       
+       **⚠️ PRIORITY CHECK: Examine ALL visible text, letters, signs, labels, logos in the video content**
+       
+       This is one of the MOST RELIABLE indicators of AI generation:
+       
+       **AI-Generated Text Tells (Very Strong Evidence):**
+       - **Gibberish/nonsense words** - letters that don't form real words
+       - **Distorted letters** - warped, melted, or morphing characters
+       - **Inconsistent fonts** - letters changing style within same word
+       - **Letter mutations** - characters transforming between frames
+       - **Backwards/mirrored text** - reversed or upside-down letters
+       - **Morphing text** - words that shift or change between frames
+       - **Non-existent language** - letter-like symbols that aren't real characters
+       - **Blurred/illegible text** where it should be clear
+       
+       **IMPORTANT DISTINCTIONS:**
+       - ✅ Analyze text WITHIN the video (signs, products, shirts, screens, etc.)
+       - ❌ IGNORE user-added captions/subtitles (likely added by real person)
+       - ✅ Clear, readable text does NOT confirm video is real (could still be AI)
+       - ⚠️ Garbled/distorted text is VERY STRONG evidence of AI generation
+       
+       **Scoring Impact:**
+       - If you see distorted/gibberish text → **Increase curvatureScore by 30-40 points**
+       - If text is morphing between frames → **Increase curvatureScore by 40-50 points**
+       - This should heavily weight your final determination
+
+    7. 🚨 AI-SPECIFIC ARTIFACT CHECKLIST (Modern Generators):
        
        **Sora Tells:**
        - Dreamlike, overly cinematic composition (too "perfect" framing)
        - Slight ethereal or surreal quality to lighting
        - Background elements that are impressively detailed but subtly inconsistent
        - Smooth but slightly "floaty" motion, lacks weight
+       - **Text issues**: Signs with garbled letters, morphing words
        
        **Runway Gen-3 Tells:**
        - Corporate/commercial aesthetic (clean, polished, but sterile)
        - Very smooth motion that can feel "computer-generated"
        - Edges can be too sharp or too soft (not naturally in-between)
        - Lighting often perfect but lacks natural imperfections
+       - **Text issues**: Clean-looking but nonsensical text
        
        **Pika/Kling Tells:**
        - More obvious physics violations (exaggerated movements)
        - Temporal glitches more common (brief warping or stuttering)
        - Lower-fidelity artifacts in complex scenes
-       - Text/small details often garbled or morphing
+       - **Text issues**: Very garbled, often completely illegible
        
        **Generic AI Tells to Watch For:**
        - Lack of camera shake or imperfect framing
@@ -406,6 +508,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Repetitive or patterned elements in organic settings (trees, crowds)
        - Missing or incorrect shadows/reflections
        - Depth inconsistencies (foreground/background relationship wrong)
+       - **TEXT PROBLEMS** (most reliable tell)
 
     📊 SCORING METHODOLOGY (Evidence-Based):
     
@@ -502,8 +605,27 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         content = ai_res['choices'][0]['message']['content']
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
+        
+        # 7. Apply metadata-based score adjustments
+        if metadata_scan['has_ai_keywords']:
+            original_curvature = analysis_result.get('curvatureScore', 0)
+            original_confidence = analysis_result.get('confidence', 0)
+            
+            # Boost scores based on AI keyword detection
+            analysis_result['curvatureScore'] = min(100, original_curvature + metadata_scan['score_increase'])
+            analysis_result['confidence'] = min(100, original_confidence + metadata_scan['confidence_boost'])
+            
+            # If score is now high, set isAi to true
+            if analysis_result['curvatureScore'] >= 60:
+                analysis_result['isAi'] = True
+            
+            # Add metadata info to reasoning
+            keyword_list = ', '.join(metadata_scan['keywords_found'][:5])  # Show first 5
+            analysis_result['reasoning'].insert(0, f"⚠️ METADATA ALERT: Video contains AI-related keywords in title/description/tags: {keyword_list}")
+            
+            print(f"📊 Scores adjusted: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
 
-        # 5. Save Submission AUTOMATICALLY
+        # 8. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now().isoformat()
         
