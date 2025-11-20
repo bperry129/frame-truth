@@ -669,7 +669,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         # 4. ReStraV-inspired trajectory analysis (lightweight, pixel-space)
         print(f"📐 Calculating trajectory metrics (ReStraV method)...")
         trajectory_metrics = calculate_trajectory_metrics(filepath, num_samples=24)
-        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False}
+        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'force_ai': False}
         
         if trajectory_metrics:
             mean_curv = trajectory_metrics['mean_curvature']
@@ -677,9 +677,16 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             
             # ReStraV insight: AI videos have HIGHER mean curvature (less straight trajectories)
             # Natural videos: mean_curvature typically 40-60°, AI: 80-120°
-            if mean_curv > 80:  # High curvature = likely AI
-                trajectory_boost['score_increase'] = min(25, int((mean_curv - 80) / 2))  # Up to +25
-                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 80) / 3))  # Up to +15
+            if mean_curv > 95:  # VERY high curvature = definitely AI (override Gemini)
+                trajectory_boost['score_increase'] = 50  # Aggressive boost
+                trajectory_boost['confidence_boost'] = 30
+                trajectory_boost['has_high_curvature'] = True
+                trajectory_boost['force_ai'] = True  # Force AI classification
+                print(f"🚨 VERY HIGH TRAJECTORY CURVATURE: {mean_curv:.1f}° - STRONG AI INDICATOR")
+                print(f"   This will OVERRIDE visual analysis due to extreme irregularity")
+            elif mean_curv > 80:  # High curvature = likely AI
+                trajectory_boost['score_increase'] = min(35, int((mean_curv - 80) / 1.5))  # Up to +35
+                trajectory_boost['confidence_boost'] = min(25, int((mean_curv - 80) / 2))  # Up to +25
                 trajectory_boost['has_high_curvature'] = True
                 print(f"⚠️ HIGH TRAJECTORY CURVATURE DETECTED: {mean_curv:.1f}° (AI indicator)")
                 print(f"   Curvature boost: +{trajectory_boost['score_increase']} to score, +{trajectory_boost['confidence_boost']} to confidence")
@@ -983,11 +990,18 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             
             print(f"📊 Metadata-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
         
-        # 9. Final AI determination based on combined signals
-        if analysis_result.get('curvatureScore', 0) >= 65:
+        # 9. Force AI classification if trajectory evidence is overwhelming
+        if trajectory_boost.get('force_ai', False):
+            analysis_result['isAi'] = True
+            analysis_result['confidence'] = max(analysis_result.get('confidence', 0), 85)  # Ensure high confidence
+            analysis_result['modelDetected'] = 'Unknown AI Model' if analysis_result.get('modelDetected') == 'Real Camera' else analysis_result.get('modelDetected')
+            print(f"🚨 FORCING AI CLASSIFICATION due to extreme trajectory irregularity (overriding visual analysis)")
+        
+        # 10. Final AI determination based on combined signals
+        elif analysis_result.get('curvatureScore', 0) >= 65:
             analysis_result['isAi'] = True
 
-        # 8. Save Submission AUTOMATICALLY
+        # 11. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now().isoformat()
         
