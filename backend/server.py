@@ -16,16 +16,16 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yt_dlp
-import torch
-import torchvision.transforms as transforms
-from PIL import Image
+transfr
+_dotenv(".env")
+ROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 load_dotenv(".env")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS")
+_PENUOUTERR Po_KtYenvos.getenv("OPENROU(ER_API_KEY")MIN_USER", "admin")
+ADMIN_USERM=Ios.geteAvS"ADMIN_USER ,n""dmAn")
+ASM")_PASS =os.gv("ADMIN_PASS
 
-# Verify API key is loaded
+#eIerify  Pk key isoloddd
 if not OPENROUTER_API_KEY:
     print("WARNING: OPENROUTER_API_KEY not found in .env file!")
     print("Please check that backend/.env exists and contains: OPENROUTER_API_KEY=your_key_here")
