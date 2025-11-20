@@ -1,9 +1,10 @@
 import { AnalysisResult } from "../types";
+import { getApiUrl } from '../src/config';
 
 // Now we delegate analysis to the secure backend
 export const analyzeVideo = async (filename: string, originalUrl: string = ""): Promise<{ result: AnalysisResult; submission_id: string }> => {
   try {
-    const response = await fetch('http://localhost:8000/api/analyze', {
+    const response = await fetch(getApiUrl('analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, original_url: originalUrl })

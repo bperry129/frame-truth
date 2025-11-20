@@ -1,4 +1,5 @@
 import { VideoMetadata } from '../types';
+import { getApiUrl, API_BASE_URL } from '../src/config';
 
 /**
  * HYBRID DOWNLOADER SERVICE
@@ -15,23 +16,26 @@ interface DownloaderOptions {
 
 const downloadFromLocalBackend = async (url: string, report: (msg: string) => void): Promise<{ blob: Blob; filename: string; meta?: any } | null> => {
   try {
-    report("Connecting to Local Backend (localhost:8000)...");
+    report("Connecting to Backend...");
     
-    // Fast check to see if backend is running
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1000); 
-    
-    try {
-        // We use /docs as a lightweight health check
-        await fetch('http://localhost:8000/docs', { method: 'HEAD', signal: controller.signal });
-        clearTimeout(timeoutId);
-    } catch (e) {
-        // Backend likely not running
-        return null; 
+    // In production, skip the health check since we know the backend is available
+    if (process.env.NODE_ENV !== 'production') {
+      // Fast check to see if backend is running (development only)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000); 
+      
+      try {
+          // We use /docs as a lightweight health check
+          await fetch(`${API_BASE_URL}/docs`, { method: 'HEAD', signal: controller.signal });
+          clearTimeout(timeoutId);
+      } catch (e) {
+          // Backend likely not running
+          return null; 
+      }
     }
 
-    report("Backend found. Starting yt-dlp engine...");
-    const response = await fetch('http://localhost:8000/download', {
+    report("Backend found. Starting video extraction...");
+    const response = await fetch(getApiUrl('download'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })

@@ -1,10 +1,12 @@
+import { getApiUrl } from '../src/config';
+
 export const saveSubmission = async (
   filename: string,
   originalUrl: string,
   analysisResult: any
 ): Promise<{ submission_id: string }> => {
   try {
-    const response = await fetch('http://localhost:8000/api/submit_analysis', {
+    const response = await fetch(getApiUrl('submit_analysis'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -27,7 +29,7 @@ export const saveSubmission = async (
 
 export const getSubmission = async (id: string): Promise<any> => {
   try {
-    const response = await fetch(`http://localhost:8000/api/submission/${id}`);
+    const response = await fetch(getApiUrl(`submission/${id}`));
     
     if (!response.ok) {
       throw new Error(`Fetch submission failed: ${response.statusText}`);
@@ -53,7 +55,7 @@ export const getSubmissions = async (
     params.append('page', page.toString());
     params.append('limit', limit.toString());
     
-    const response = await fetch(`http://localhost:8000/api/submissions?${params}`, {
+    const response = await fetch(getApiUrl(`submissions?${params}`), {
         headers: { 
             'x-admin-user': user,
             'x-admin-pass': pass
@@ -74,7 +76,7 @@ export const uploadFile = async (file: File): Promise<{ filename: string; url: s
     formData.append('file', file);
 
     try {
-        const response = await fetch('http://localhost:8000/upload', {
+        const response = await fetch(getApiUrl('upload'), {
             method: 'POST',
             body: formData
         });
