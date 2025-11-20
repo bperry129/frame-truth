@@ -2,3 +2,10 @@ fastapi
 uvicorn
 yt-dlp
 pydantic
+torch
+torchvision
+timm
+opencv-python
+numpy
+python-dotenv
+requests

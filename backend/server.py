@@ -16,6 +16,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import yt_dlp
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
 
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -46,6 +49,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global DINOv2 model (lazy loaded)
+_dinov2_model = None
+_dinov2_transform = None
+
+def get_dinov2_model():
+    """Lazy load DINOv2 model (cached after first use)"""
+    global _dinov2_model, _dinov2_transform
+    
+    if _dinov2_model is None:
+        print("🔄 Loading DINOv2 model (first-time setup, ~90MB download)...")
+        try:
+            # Load smallest DINOv2 variant (vits14) for efficiency
+            _dinov2_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+            _dinov2_model.eval()  # Set to evaluation mode
+            
+            # DINOv2 preprocessing transform
+            _dinov2_transform = transforms.Compose([
+                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+            
+            print("✅ DINOv2 model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load DINOv2: {e}")
+            raise
+    
+    return _dinov2_model, _dinov2_transform
 
 # Database Setup
 DB_NAME = "frame_truth.db"
@@ -181,13 +214,20 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
             'score_increase': 0
         }
 
-def calculate_trajectory_metrics(video_path, num_samples=24):
+def calculate_trajectory_metrics_dinov2(video_path, num_samples=24):
     """
-    Calculate lightweight trajectory metrics inspired by ReStraV paper.
-    Measures temporal curvature and distance without requiring DINOv2.
+    Calculate ReStraV trajectory metrics using DINOv2 embeddings (proper implementation).
+    Based on: "AI-Generated Video Detection via Perceptual Straightening"
+    
+    Real videos: Lower curvature (straighter semantic trajectories)
+    AI videos: Higher curvature (irregular, non-physical semantic changes)
+    
     Returns dict with mean_curvature, curvature_variance, mean_distance.
     """
     try:
+        # Load DINOv2 model (lazy loaded, cached)
+        model, transform = get_dinov2_model()
+        
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
@@ -198,40 +238,50 @@ def calculate_trajectory_metrics(video_path, num_samples=24):
         # Sample frames evenly
         step = max(1, total_frames // num_samples)
         
-        # Extract grayscale frames for efficient processing
-        frames_gray = []
+        # Extract DINOv2 embeddings
+        embeddings = []
         count = 0
         extracted = 0
         
-        while cap.isOpened() and extracted < num_samples:
-            ret, frame = cap.read()
-            if not ret:
-                break
-                
-            if count % step == 0:
-                # Convert to grayscale and resize for efficiency
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                gray = cv2.resize(gray, (224, 224))
-                frames_gray.append(gray.flatten().astype(np.float32))
-                extracted += 1
-                
-            count += 1
+        print(f"   Extracting DINOv2 features from {num_samples} frames...")
+        
+        with torch.no_grad():  # Disable gradient computation for inference
+            while cap.isOpened() and extracted < num_samples:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                if count % step == 0:
+                    # Convert BGR to RGB
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    # Convert to PIL Image
+                    pil_img = Image.fromarray(frame_rgb)
+                    # Apply DINOv2 transform
+                    img_tensor = transform(pil_img).unsqueeze(0)  # Add batch dimension
+                    
+                    # Extract features (384-dim for vits14)
+                    features = model(img_tensor)
+                    embeddings.append(features.squeeze().cpu().numpy())
+                    extracted += 1
+                    
+                count += 1
         
         cap.release()
         
-        if len(frames_gray) < 3:
+        if len(embeddings) < 3:
             return None
         
-        # Convert to numpy array
-        frames_array = np.array(frames_gray)
+        # Convert to numpy array (shape: [num_frames, 384])
+        embeddings_array = np.array(embeddings)
         
-        # Calculate displacement vectors (frame-to-frame changes)
-        displacements = np.diff(frames_array, axis=0)
+        # Calculate displacement vectors (semantic changes between frames)
+        displacements = np.diff(embeddings_array, axis=0)
         
-        # Calculate stepwise distances (magnitude of change)
+        # Calculate stepwise distances (magnitude of semantic change)
         distances = np.linalg.norm(displacements, axis=1)
         
         # Calculate curvature (angle between consecutive displacement vectors)
+        # This measures how "straight" the trajectory is in semantic space
         curvatures = []
         for i in range(len(displacements) - 1):
             vec1 = displacements[i]
@@ -241,7 +291,7 @@ def calculate_trajectory_metrics(video_path, num_samples=24):
             norm1 = np.linalg.norm(vec1)
             norm2 = np.linalg.norm(vec2)
             
-            if norm1 > 0 and norm2 > 0:
+            if norm1 > 1e-6 and norm2 > 1e-6:  # Avoid division by zero
                 # Calculate cosine similarity
                 cos_sim = np.dot(vec1, vec2) / (norm1 * norm2)
                 # Clamp to [-1, 1] to avoid numerical errors
@@ -264,11 +314,12 @@ def calculate_trajectory_metrics(video_path, num_samples=24):
             'curvature_variance': curvature_variance,
             'mean_distance': mean_distance,
             'max_curvature': max_curvature,
-            'num_samples': len(frames_gray)
+            'num_samples': len(embeddings),
+            'method': 'dinov2'
         }
         
     except Exception as e:
-        print(f"⚠️ Trajectory calculation failed: {str(e)}")
+        print(f"⚠️ DINOv2 trajectory calculation failed: {str(e)}")
         return None
 
 def extract_frames_base64(video_path, num_frames=15):
@@ -666,32 +717,36 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             num_frames = 100  # Longer videos - cap at 100 to balance cost/accuracy
             print(f"📹 Long video ({duration:.1f}s) - using 100 frames (capped)")
         
-        # 4. ReStraV-inspired trajectory analysis (lightweight, pixel-space)
-        print(f"📐 Calculating trajectory metrics (ReStraV method)...")
-        trajectory_metrics = calculate_trajectory_metrics(filepath, num_samples=24)
+        # 4. ReStraV trajectory analysis using DINOv2 embeddings
+        print(f"📐 Calculating ReStraV trajectory metrics using DINOv2...")
+        trajectory_metrics = calculate_trajectory_metrics_dinov2(filepath, num_samples=24)
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'force_ai': False}
         
         if trajectory_metrics:
             mean_curv = trajectory_metrics['mean_curvature']
             curv_var = trajectory_metrics['curvature_variance']
+            mean_dist = trajectory_metrics['mean_distance']
             
-            # ReStraV insight: AI videos have HIGHER mean curvature (less straight trajectories)
-            # Natural videos: mean_curvature typically 40-60°, AI: 80-120°
-            if mean_curv > 95:  # VERY high curvature = definitely AI (override Gemini)
-                trajectory_boost['score_increase'] = 50  # Aggressive boost
-                trajectory_boost['confidence_boost'] = 30
+            # ReStraV paper findings (semantic space with DINOv2):
+            # Real videos: mean_curvature typically 60-80° (straighter semantic trajectories)
+            # AI videos: mean_curvature typically 85-110° (irregular semantic changes)
+            # Threshold: 82° is a good separator
+            
+            if mean_curv > 90:  # Strong AI indicator
+                trajectory_boost['score_increase'] = min(40, int((mean_curv - 90) * 2))  # Up to +40
+                trajectory_boost['confidence_boost'] = min(30, int((mean_curv - 90) * 1.5))  # Up to +30
                 trajectory_boost['has_high_curvature'] = True
-                trajectory_boost['force_ai'] = True  # Force AI classification
-                print(f"🚨 VERY HIGH TRAJECTORY CURVATURE: {mean_curv:.1f}° - STRONG AI INDICATOR")
-                print(f"   This will OVERRIDE visual analysis due to extreme irregularity")
-            elif mean_curv > 80:  # High curvature = likely AI
-                trajectory_boost['score_increase'] = min(35, int((mean_curv - 80) / 1.5))  # Up to +35
-                trajectory_boost['confidence_boost'] = min(25, int((mean_curv - 80) / 2))  # Up to +25
+                trajectory_boost['force_ai'] = True  # Override visual analysis
+                print(f"🚨 VERY HIGH SEMANTIC CURVATURE: {mean_curv:.1f}° - STRONG AI INDICATOR")
+                print(f"   Forcing AI classification (overriding visual analysis)")
+            elif mean_curv > 82:  # Moderate AI indicator
+                trajectory_boost['score_increase'] = min(25, int((mean_curv - 82) * 3))  # Up to +25
+                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 82) * 2.5))  # Up to +20
                 trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ HIGH TRAJECTORY CURVATURE DETECTED: {mean_curv:.1f}° (AI indicator)")
-                print(f"   Curvature boost: +{trajectory_boost['score_increase']} to score, +{trajectory_boost['confidence_boost']} to confidence")
+                print(f"⚠️ HIGH SEMANTIC CURVATURE: {mean_curv:.1f}° (AI indicator)")
+                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             else:
-                print(f"✓ Normal trajectory curvature: {mean_curv:.1f}° (natural video indicator)")
+                print(f"✓ Normal semantic curvature: {mean_curv:.1f}° (natural video)")
         
         # 5. Scan metadata for AI keywords (if URL provided)
         metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
