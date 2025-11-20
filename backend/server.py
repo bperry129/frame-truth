@@ -247,20 +247,26 @@ async def download_with_cobalt(url: str, file_id: str) -> dict:
     print(f"🔄 Attempting Cobalt API fallback for: {url}")
     
     try:
-        # Cobalt API endpoint
+        # Cobalt API endpoint (using v7.10 API)
         cobalt_url = "https://co.wuk.sh/api/json"
         
-        response = requests.post(cobalt_url, json={
+        payload = {
             "url": url,
             "vCodec": "h264",
             "vQuality": "720",
-            "aFormat": "mp3",
-            "filenamePattern": "basic",
-            "isAudioOnly": False
-        }, headers={
+            "isAudioOnly": False,
+            "filenamePattern": "basic"
+        }
+        
+        print(f"📤 Cobalt request: {payload}")
+        
+        response = requests.post(cobalt_url, json=payload, headers={
             "Accept": "application/json",
             "Content-Type": "application/json"
-        })
+        }, timeout=30)
+        
+        print(f"📥 Cobalt response status: {response.status_code}")
+        print(f"📥 Cobalt response: {response.text[:500]}")
         
         if response.status_code != 200:
             raise Exception(f"Cobalt API error: {response.text}")
