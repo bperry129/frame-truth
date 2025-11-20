@@ -239,51 +239,119 @@ async def upload_video_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
 
-async def download_with_cobalt(url: str, file_id: str) -> dict:
+async def download_with_y2mate(url: str, file_id: str) -> dict:
     """
-    Fallback download method using Cobalt API (for YouTube bot detection bypass)
-    FREE, open-source, no rate limits - automatic fallback when yt-dlp fails
+    Fallback download method using Y2Mate API (for YouTube bot detection bypass)
+    FREE API - works reliably for YouTube downloads
     """
-    print(f"🔄 Attempting Cobalt API fallback for: {url}")
+    print(f"🔄 Attempting Y2Mate API fallback for: {url}")
     
     try:
-        # Cobalt API endpoint (using v7.10 API)
-        cobalt_url = "https://co.wuk.sh/api/json"
+        # Y2Mate API - Step 1: Analyze video
+        analyze_url = "https://www.y2mate.com/mates/analyzeV2/ajax"
         
-        payload = {
-            "url": url,
-            "vCodec": "h264",
-            "vQuality": "720",
-            "isAudioOnly": False,
-            "filenamePattern": "basic"
+        analyze_payload = {
+            "k_query": url,
+            "k_page": "home",
+            "hl": "en",
+            "q_auto": 0
         }
         
-        print(f"📤 Cobalt request: {payload}")
+        print(f"📤 Y2Mate analyze request for: {url}")
         
-        response = requests.post(cobalt_url, json=payload, headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }, timeout=30)
+        analyze_response = requests.post(
+            analyze_url,
+            data=analyze_payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout=30
+        )
         
-        print(f"📥 Cobalt response status: {response.status_code}")
-        print(f"📥 Cobalt response: {response.text[:500]}")
+        print(f"📥 Y2Mate analyze response status: {analyze_response.status_code}")
         
-        if response.status_code != 200:
-            raise Exception(f"Cobalt API error: {response.text}")
+        if analyze_response.status_code != 200:
+            raise Exception(f"Y2Mate analyze failed: {analyze_response.text[:200]}")
         
-        data = response.json()
+        analyze_data = analyze_response.json()
         
-        if data.get("status") != "redirect" and data.get("status") != "stream":
-            raise Exception(f"Cobalt returned status: {data.get('status')}")
+        if analyze_data.get("status") != "ok":
+            raise Exception(f"Y2Mate returned status: {analyze_data.get('status')}")
         
-        # Download from Cobalt's provided URL
-        download_url = data.get("url")
-        if not download_url:
-            raise Exception("No download URL from Cobalt")
+        # Extract video ID and links
+        vid = analyze_data.get("vid")
+        links = analyze_data.get("links", {})
         
-        print(f"📥 Downloading from Cobalt: {download_url}")
+        if not vid or not links:
+            raise Exception("No video data from Y2Mate")
         
-        video_response = requests.get(download_url, stream=True, timeout=120)
+        # Try to get 720p mp4, fallback to other qualities
+        video_formats = links.get("mp4", {})
+        
+        k_value = None
+        quality = None
+        
+        # Priority: 720p > 480p > 360p > any
+        for q in ["720", "480", "360"]:
+            if q in video_formats:
+                k_value = video_formats[q].get("k")
+                quality = q
+                break
+        
+        if not k_value:
+            # Get any available format
+            for q, data in video_formats.items():
+                k_value = data.get("k")
+                quality = q
+                break
+        
+        if not k_value:
+            raise Exception("No downloadable format found")
+        
+        print(f"📥 Selected quality: {quality}p")
+        
+        # Step 2: Get download link
+        convert_url = "https://www.y2mate.com/mates/convertV2/index"
+        
+        convert_payload = {
+            "vid": vid,
+            "k": k_value
+        }
+        
+        convert_response = requests.post(
+            convert_url,
+            data=convert_payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout=30
+        )
+        
+        if convert_response.status_code != 200:
+            raise Exception(f"Y2Mate convert failed: {convert_response.text[:200]}")
+        
+        convert_data = convert_response.json()
+        
+        if convert_data.get("status") != "ok":
+            raise Exception(f"Y2Mate convert status: {convert_data.get('status')}")
+        
+        # Extract download URL from HTML response
+        import re
+        dlink_match = re.search(r'href="([^"]+)"', convert_data.get("dlink", ""))
+        
+        if not dlink_match:
+            raise Exception("No download URL found in response")
+        
+        download_url = dlink_match.group(1)
+        
+        print(f"📥 Downloading from Y2Mate: {download_url[:100]}...")
+        
+        # Download the video
+        video_response = requests.get(download_url, stream=True, timeout=120, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
         video_response.raise_for_status()
         
         # Save to file
@@ -295,21 +363,22 @@ async def download_with_cobalt(url: str, file_id: str) -> dict:
                 if chunk:
                     f.write(chunk)
         
-        print(f"✅ Cobalt download successful: {filename}")
+        print(f"✅ Y2Mate download successful: {filename} ({quality}p)")
         
-        # Return basic metadata
+        # Return metadata
         return {
             "filename": filename,
             "url": f"/videos/{filename}",
             "meta": {
-                "title": "Video",
+                "title": analyze_data.get("title", "Video"),
                 "uploader": "Unknown",
-                "source": "cobalt_api"
+                "source": "y2mate_api",
+                "quality": f"{quality}p"
             }
         }
         
     except Exception as e:
-        print(f"❌ Cobalt API failed: {str(e)}")
+        print(f"❌ Y2Mate API failed: {str(e)}")
         raise
 
 @app.post("/api/download")
@@ -432,30 +501,38 @@ async def download_video(request: DownloadRequest):
         is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
         
         if is_youtube and is_bot_error:
-            print(f"⚠️ YouTube bot detection triggered")
+            print(f"🔄 YouTube bot detection - attempting Y2Mate API fallback...")
             
-            # Provide clear, helpful message
-            helpful_msg = (
-                "🚫 YouTube Blocked This Request\n\n"
-                "YouTube has bot detection measures that block automated downloads. "
-                "This is a temporary limitation due to YouTube's anti-bot systems.\n\n"
-                "✅ **Easy Workaround (30 seconds):**\n"
-                "1. Download the YouTube video to your device (use any YouTube downloader)\n"
-                "2. Click the 'Upload File' tab above\n"
-                "3. Upload the video file\n"
-                "4. Analyze as normal!\n\n"
-                "💡 **Other Options:**\n"
-                "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
-                "• Use a YouTube Shorts/video from a different region\n"
-                "• Wait 10-15 minutes and try again\n\n"
-                "Note: The detection varies by video and time. Some videos download fine, others get blocked."
-            )
-            
-            return JSONResponse(status_code=400, content={
-                "detail": helpful_msg,
-                "error_type": "youtube_bot_detection",
-                "suggestion": "use_upload_tab"
-            })
+            try:
+                # Try Y2Mate API as fallback
+                result = await download_with_y2mate(request.url, file_id)
+                print(f"✅ Y2Mate API fallback successful!")
+                return result
+                
+            except Exception as y2mate_error:
+                print(f"❌ Y2Mate API fallback also failed: {str(y2mate_error)}")
+                
+                # Both methods failed - provide helpful message
+                helpful_msg = (
+                    "🚫 YouTube Download Failed\n\n"
+                    "Both download methods failed (yt-dlp + Y2Mate API). "
+                    "This can happen with certain restricted videos.\n\n"
+                    "✅ **Easy Workaround (30 seconds):**\n"
+                    "1. Download the YouTube video to your device (use any YouTube downloader)\n"
+                    "2. Click the 'Upload File' tab above\n"
+                    "3. Upload the video file\n"
+                    "4. Analyze as normal!\n\n"
+                    "💡 **Other Options:**\n"
+                    "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
+                    "• Wait 10-15 minutes and try again"
+                )
+                
+                return JSONResponse(status_code=400, content={
+                    "detail": helpful_msg,
+                    "error_type": "youtube_all_methods_failed",
+                    "primary_error": error_msg,
+                    "fallback_error": str(y2mate_error)
+                })
         
         # Non-YouTube error or non-bot error
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
