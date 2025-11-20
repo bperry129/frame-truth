@@ -18,6 +18,9 @@ RUN npm install
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
+# Install PyTorch CPU FIRST (before other dependencies)
+RUN pip install --no-cache-dir torch==2.2.2+cpu torchvision==0.17.2+cpu torchaudio==2.2.2+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application
