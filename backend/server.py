@@ -211,7 +211,9 @@ async def download_video(request: DownloadRequest):
                 'youtube': {
                     'skip': ['dash', 'hls'],
                     'player_skip': ['configs'],
-                    'player_client': ['android', 'web'],
+                    'player_client': ['android', 'web', 'ios', 'mweb'],
+                    'innertube_host': 'www.youtube.com',
+                    'innertube_key': None,
                 },
                 'tiktok': {
                     'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
