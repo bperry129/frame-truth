@@ -24,10 +24,5 @@
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
-  ],
-  "env": {
-    "OPENROUTER_API_KEY": "@openrouter_api_key",
-    "ADMIN_USER": "@admin_user",
-    "ADMIN_PASS": "@admin_pass"
-  }
+  ]
 }
