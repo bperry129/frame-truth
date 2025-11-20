@@ -182,56 +182,50 @@ async def download_video(request: DownloadRequest):
         filepath = os.path.join(DOWNLOAD_DIR, f"{file_id}")
         
         ydl_opts = {
-            'format': 'best[height<=720]/best',
+            # Use mobile format (less likely to be blocked)
+            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best',
             'outtmpl': filepath + '.%(ext)s',
-            'quiet': True,  # Reduce logging noise
-            'no_warnings': True,
-            'max_filesize': 100 * 1024 * 1024,  # Increase to 100MB
+            'quiet': False,  # Enable logging for debugging
+            'no_warnings': False,
+            'verbose': True,  # Add verbose logging
+            'max_filesize': 100 * 1024 * 1024,
             'noplaylist': True,
             'geo_bypass': True,
-            # Try without impersonation first (may cause issues on Railway)
-            # 'impersonate': 'chrome120',
-            # Enhanced headers to avoid bot detection
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://www.google.com/',
-            },
+            
+            # Critical: Use Android client to bypass bot detection
             'extractor_args': {
                 'youtube': {
+                    # Force Android client (most reliable)
+                    'player_client': ['android'],
                     'skip': ['dash', 'hls'],
-                    'player_skip': ['configs'],
-                    'player_client': ['android', 'web', 'ios', 'mweb'],
-                    'innertube_host': 'www.youtube.com',
-                    'innertube_key': None,
-                },
-                'tiktok': {
-                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
+                    'player_skip': ['webpage', 'configs'],
                 }
             },
-            'cookiefile': None,
-            'age_limit': None,
+            
+            # Enhanced headers mimicking mobile Chrome
+            'http_headers': {
+                'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate',
+                'X-YouTube-Client-Name': '3',
+                'X-YouTube-Client-Version': '19.09.37',
+            },
+            
             # Additional anti-bot measures
-            'sleep_interval': 2,
-            'max_sleep_interval': 10,
-            'sleep_interval_requests': 2,
-            # Retry configuration
-            'retries': 5,
-            'fragment_retries': 5,
-            # Force IPv4 to avoid IPv6 issues
-            'force_ipv4': True,
-            # Add random delays
-            'sleep_interval_subtitles': 1,
+            'sleep_interval': 1,
+            'max_sleep_interval': 5,
+            'retries': 10,
+            'fragment_retries': 10,
+            'file_access_retries': 5,
+            
+            # Network settings
+            'socket_timeout': 30,
+            'source_address': None,
+            
+            # Avoid potential issues
+            'nocheckcertificate': True,
+            'prefer_insecure': False,
         }
         
         print(f"📁 Download path: {filepath}")
