@@ -315,63 +315,69 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 5. Call AI API with enhanced forensic prompt
+        # 5. Call AI API with neutral forensic prompt
         prompt = """
-    You are an EXPERT AI Video Forensics Analyst specializing in detecting synthetic/AI-generated videos. 
-    Modern AI video generators (Sora, Runway Gen-3, Pika, Kling, etc.) have become extremely convincing, 
-    but they ALL have subtle telltale signs. Your job is to find them.
+    You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
+    Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
 
-    CRITICAL: Be HIGHLY SUSPICIOUS. Even professional-looking videos can be AI-generated. 
-    When in doubt, lean toward marking as AI-generated rather than missing a deepfake.
+    🔍 ANALYSIS FRAMEWORK - Examine these sequential frames objectively:
 
-    🔍 ANALYSIS FRAMEWORK - Examine these sequential frames for:
+    1. TEMPORAL COHERENCE ANALYSIS:
+       - Frame-to-frame consistency (natural vs. artificial transitions)
+       - Motion blur patterns (camera motion vs. synthetic blur)
+       - Lighting consistency across frames
+       - Object stability and position tracking
+       - Background element behavior
 
-    1. TEMPORAL COHERENCE VIOLATIONS:
-       - Frame-to-frame consistency breaks (subtle morphing, texture shifting)
-       - Unnatural motion blur patterns or lack thereof
-       - Inconsistent lighting changes between frames
-       - Objects that subtly change shape/size/position unrealistically
-       - Background elements that "swim" or warp slightly
+    2. PHYSICS & MOTION ANALYSIS:
+       - Gravity and momentum behavior (natural vs. impossible)
+       - Shadow direction, intensity, and consistency
+       - Reflection accuracy (mirrors, water, glass, metallic surfaces)
+       - Depth perception and occlusion correctness
+       - Material properties (weight, flexibility, rigidity)
 
-    2. PHYSICS & REALITY CHECKS:
-       - Gravity defiance (hair, clothing, liquids behaving impossibly)
-       - Momentum violations (sudden direction changes without force)
-       - Shadow inconsistencies (direction, hardness, color temperature)
-       - Reflection impossibilities (mirrors, water, glass not matching scene)
-       - Depth perception errors (occlusion failures, z-ordering glitches)
+    3. VISUAL QUALITY INDICATORS:
+       - Texture consistency and detail stability
+       - Surface material rendering (natural vs. synthetic appearance)
+       - Facial features and proportions (natural vs. uncanny valley)
+       - Pattern regularity in organic elements
+       - Edge definition and boundary clarity
 
-    3. SURFACE-LEVEL ARTIFACTS (Common in AI):
-       - Texture "boiling" (subtle flickering/crawling of fine details)
-       - Watercolor effect (overly smooth or plastic-looking surfaces)
-       - Uncanny valley faces (too perfect, symmetrical, or slightly "off")
-       - Repetitive patterns in organic materials (trees, crowds, fabric)
-       - Edge bleeding (objects slightly blending into backgrounds)
+    4. OBJECT & SCENE CONSISTENCY:
+       - Object permanence through occlusion
+       - Detail consistency across frames (jewelry, buttons, text, features)
+       - Background stability and coherence
+       - Anatomical accuracy (hands, fingers, body proportions)
+       - Scene composition naturalness
 
-    4. OBJECT PERMANENCE FAILURES:
-       - Objects disappearing when occluded then reappearing differently
-       - Details changing between visibility (jewelry, buttons, text)
-       - Background elements morphing or inconsistent between frames
-       - Hand/finger anomalies (extra/missing fingers, unnatural poses)
+    5. TECHNICAL SIGNATURES (Observable Patterns):
+       - Camera artifacts (lens distortion, sensor noise, compression artifacts)
+       - Motion characteristics (handheld shake, stabilization, panning smoothness)
+       - Focus behavior (depth of field, bokeh, autofocus hunting)
+       - Color grading and dynamic range
+       - Temporal artifacts or glitches
 
-    5. GENERATION MODEL SIGNATURES:
-       - Sora: Overly cinematic, perfect composition, slight dreamlike quality
-       - Runway: Clean but sometimes too smooth, corporate aesthetic
-       - Pika: Quirky physics, exaggerated movements
-       - Stable Video: Lower resolution artifacts, more obvious inconsistencies
-
-    ⚠️ RED FLAGS TO NEVER IGNORE:
-    - ANY physics violation, no matter how small
-    - Unnatural smoothness or "perfection" in organic textures
-    - Temporal inconsistencies in fine details (hair, fabric, particles)
-    - Lighting that doesn't match shadow direction
-    - Motion that looks "floaty" or lacks proper acceleration
-    - Background that seems painted or too static while foreground moves
-
-    📊 SCORING GUIDELINES:
-    - curvatureScore: 0-30 = Real, 31-60 = Suspicious, 61-100 = Likely AI
-    - If you see MULTIPLE red flags, err on the side of "AI-generated"
-    - Real camera footage is NEVER perfect - look for natural imperfections
-    - Modern AI videos can be 95% convincing - focus on the 5% that's wrong
+    📊 SCORING METHODOLOGY (Evidence-Based):
+    
+    **curvatureScore (0-100)**: Based on motion trajectory analysis
+    - 0-30: Natural camera motion with realistic object trajectories
+    - 31-60: Some irregular patterns that could be either natural or synthetic
+    - 61-100: Clear unnatural motion patterns inconsistent with physics
+    
+    **distanceScore (0-100)**: Based on spatial consistency
+    - Measure consistency of object positions and spatial relationships
+    
+    **confidence (0-100)**: Your certainty in the classification
+    - Base this on the STRENGTH and QUANTITY of evidence observed
+    - Low confidence (0-40): Ambiguous or limited evidence
+    - Medium confidence (41-70): Some clear indicators present
+    - High confidence (71-100): Multiple strong, unambiguous indicators
+    
+    **isAi determination**: 
+    - Set to TRUE only if you observe clear, unambiguous technical evidence of synthetic generation
+    - Set to FALSE if the video shows natural camera characteristics and physics
+    - Consider the TOTALITY of evidence, not individual anomalies
+    - Real-world videos can have compression artifacts, editing, and imperfections
 
     Output STRICTLY in JSON format:
     {
@@ -385,16 +391,37 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     }
 
     MANDATORY REQUIREMENTS:
-    1. "reasoning": List 4-6 specific observations (what you saw, not technical jargon)
-    2. "trajectoryData": Generate 15-30 realistic coordinate points (matching frame count)
-    3. "modelDetected": Identify the likely source:
-       - If AI: "Sora", "Runway Gen-3", "Pika", "Kling", "Unknown AI Model"
-       - If Real: "Real Camera"
-    4. "isAi": Set to true if curvatureScore > 40 OR you see 2+ red flags
-    5. "confidence": Lower this if you're uncertain, but be suspicious by default
+    1. "reasoning": List 4-6 specific OBJECTIVE observations based on what you see
+       - Describe actual visual evidence, not assumptions
+       - Note both indicators of AI AND indicators of real footage
+       - Be specific about frame numbers or sequences where relevant
+    
+    2. "trajectoryData": Generate 15-30 realistic coordinate points tracking motion
+       - Should correspond to actual movement patterns observed
+       - Points should reflect natural or unnatural trajectories observed
+    
+    3. "modelDetected": Identify based on EVIDENCE ONLY:
+       - If clearly AI-generated: Specify "Sora", "Runway Gen-3", "Pika", "Kling", or "Unknown AI Model"
+       - If appears authentic: "Real Camera"
+       - If uncertain: "Real Camera" (default to real when ambiguous)
+    
+    4. "isAi": Base decision on clear technical evidence
+       - Require MULTIPLE strong indicators, not single anomalies
+       - Consider that real videos can have: compression artifacts, motion blur, editing cuts, color grading
+       - Consider that real videos may have: shaky cam, autofocus hunting, lens flares, sensor noise
+    
+    5. "confidence": Reflect genuine uncertainty
+       - Don't artificially inflate confidence
+       - Lower confidence for ambiguous cases
+       - Higher confidence only when multiple clear indicators align
 
-    Remember: False negatives (missing AI videos) are MORE DANGEROUS than false positives.
-    When analyzing, assume AI until proven otherwise.
+    IMPORTANT PRINCIPLES:
+    - Remain NEUTRAL - do not assume AI or Real without evidence
+    - Real-world videos often have imperfections that are NOT signs of AI
+    - Professional videography can look very clean and still be real
+    - Animation and CGI are NOT the same as AI-generated deepfakes
+    - Base conclusions on TECHNICAL EVIDENCE, not aesthetic preferences
+    - When uncertain, acknowledge the uncertainty in your confidence score
         """
 
         content_parts = [{"type": "text", "text": prompt}]
