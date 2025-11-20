@@ -6,5 +6,4 @@ opencv-python-headless
 numpy
 python-dotenv
 requests
-https://download.pytorch.org/whl/cpu/torch-2.5.1%2Bcpu-cp312-cp312-linux_x86_64.whl
-https://download.pytorch.org/whl/cpu/torchvision-0.20.1%2Bcpu-cp312-cp312-linux_x86_64.whl
+pillow
