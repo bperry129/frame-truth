@@ -1,7 +1,0 @@
-# Railway configuration for Python backend
-[build]
-  builder = "NIXPACKS"
-
-[env]
-  PORT = "8080"
-  PYTHONPATH = "/app"
