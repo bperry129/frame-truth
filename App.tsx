@@ -49,15 +49,20 @@ const updateRateLimitData = (data: RateLimitData) => {
 };
 
 const incrementSubmissionCount = (): boolean => {
-  const data = getRateLimitData();
-  
-  if (data.count >= DAILY_LIMIT) {
-    return false; // Limit exceeded
-  }
-  
-  data.count += 1;
-  updateRateLimitData(data);
+  // TEMPORARILY DISABLE FRONTEND RATE LIMITING FOR DEBUGGING
+  console.log("🔓 FRONTEND RATE LIMITING DISABLED - bypassing all limits");
   return true;
+  
+  // Original rate limiting code (commented out for debugging)
+  // const data = getRateLimitData();
+  // 
+  // if (data.count >= DAILY_LIMIT) {
+  //   return false; // Limit exceeded
+  // }
+  // 
+  // data.count += 1;
+  // updateRateLimitData(data);
+  // return true;
 };
 
 const formatTimeRemaining = (resetTime: number): string => {
