@@ -1,6 +1,9 @@
-# Python dependencies for backend deployment
-Flask==2.3.3
-Flask-CORS==4.0.0
+# Python dependencies for FastAPI backend
+fastapi==0.104.1
+uvicorn==0.24.0
 python-dotenv==1.0.0
-Werkzeug==2.3.7
-gunicorn==21.2.0
+opencv-python==4.8.1.78
+yt-dlp==2023.10.13
+requests==2.31.0
+pydantic==2.5.0
+python-multipart==0.0.6
