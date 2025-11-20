@@ -25,6 +25,14 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS")
 
+# Verify PyTorch installation (for Railway debugging)
+print("=" * 50)
+print("🔍 PyTorch Installation Check:")
+print(f"   Torch version: {torch.__version__}")
+print(f"   CUDA available: {torch.cuda.is_available()}")
+print(f"   Device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
+print("=" * 50)
+
 # Verify API key is loaded
 if not OPENROUTER_API_KEY:
     print("WARNING: OPENROUTER_API_KEY not found in .env file!")
