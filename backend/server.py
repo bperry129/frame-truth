@@ -432,29 +432,30 @@ async def download_video(request: DownloadRequest):
         is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
         
         if is_youtube and is_bot_error:
-            print(f"🔄 YouTube bot detection - attempting Cobalt API fallback...")
+            print(f"⚠️ YouTube bot detection triggered")
             
-            try:
-                # Try Cobalt API as fallback
-                result = await download_with_cobalt(request.url, file_id)
-                print(f"✅ Cobalt API fallback successful!")
-                return result
-                
-            except Exception as cobalt_error:
-                print(f"❌ Cobalt API fallback also failed: {str(cobalt_error)}")
-                
-                # Both methods failed - provide helpful message
-                helpful_msg = (
-                    "YouTube download failed using multiple methods. "
-                    "\n\n**Workaround:** Please download the video to your device first, then upload it using the 'Upload File' tab. "
-                    "\n\nAlternatively, try a different video platform (TikTok, Instagram, Twitter work well)."
-                )
-                return JSONResponse(status_code=400, content={
-                    "detail": helpful_msg,
-                    "error_type": "youtube_all_methods_failed",
-                    "primary_error": error_msg,
-                    "fallback_error": str(cobalt_error)
-                })
+            # Provide clear, helpful message
+            helpful_msg = (
+                "🚫 YouTube Blocked This Request\n\n"
+                "YouTube has bot detection measures that block automated downloads. "
+                "This is a temporary limitation due to YouTube's anti-bot systems.\n\n"
+                "✅ **Easy Workaround (30 seconds):**\n"
+                "1. Download the YouTube video to your device (use any YouTube downloader)\n"
+                "2. Click the 'Upload File' tab above\n"
+                "3. Upload the video file\n"
+                "4. Analyze as normal!\n\n"
+                "💡 **Other Options:**\n"
+                "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
+                "• Use a YouTube Shorts/video from a different region\n"
+                "• Wait 10-15 minutes and try again\n\n"
+                "Note: The detection varies by video and time. Some videos download fine, others get blocked."
+            )
+            
+            return JSONResponse(status_code=400, content={
+                "detail": helpful_msg,
+                "error_type": "youtube_bot_detection",
+                "suggestion": "use_upload_tab"
+            })
         
         # Non-YouTube error or non-bot error
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
