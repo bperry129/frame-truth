@@ -8,7 +8,6 @@ export const analyzeVideo = async (filename: string, originalUrl: string = ""): 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, original_url: originalUrl })
-    });
 
     if (!response.ok) {
        if (response.status === 429) {

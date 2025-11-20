@@ -167,7 +167,7 @@ async def upload_video_file(file: UploadFile = File(...)):
             
         return {
             "filename": filename,
-            "url": f"http://localhost:8000/videos/{filename}"
+            "url": f"/videos/{filename}"
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
@@ -249,7 +249,7 @@ async def download_video(request: DownloadRequest):
         
         return {
             "filename": actual_filename,
-            "url": f"http://localhost:8000/videos/{actual_filename}",
+            "url": f"/videos/{actual_filename}",
             "meta": meta_info
         }
 
@@ -484,6 +484,16 @@ async def reset_rate_limit(request: Request):
 @app.get("/docs")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/api/test")
+async def test_endpoint():
+    """Simple test endpoint to verify backend is working"""
+    return {
+        "status": "Backend is working!",
+        "environment": "production" if os.getenv("VERCEL") else "development",
+        "openrouter_key_present": bool(OPENROUTER_API_KEY),
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.get("/api/check-ip")
 async def check_ip(request: Request):

@@ -1,6 +1,6 @@
 // API Configuration for different environments
 export const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api'  // In production on Vercel, API routes are at /api/*
+  ? 'https://frame-truth-backend-production.up.railway.app'  // Railway backend URL
   : 'http://localhost:8000';  // In development, use local backend
 
 export const getApiUrl = (endpoint: string): string => {
@@ -8,7 +8,7 @@ export const getApiUrl = (endpoint: string): string => {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
   
   if (process.env.NODE_ENV === 'production') {
-    return `/api/${cleanEndpoint}`;
+    return `${API_BASE_URL}/api/${cleanEndpoint}`;
   } else {
     return `${API_BASE_URL}/${cleanEndpoint}`;
   }
