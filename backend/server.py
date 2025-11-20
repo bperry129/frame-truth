@@ -295,12 +295,27 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
-        # 3. Extract Frames
-        frames = extract_frames_base64(filepath, 15)
+        # 3. Calculate video duration to determine optimal frame count
+        cap = cv2.VideoCapture(filepath)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps if fps > 0 else 30
+        cap.release()
+        
+        # Adaptive frame count based on video duration
+        if duration < 30:
+            num_frames = 30  # Dense sampling for short videos (Shorts, TikTok, Reels)
+            print(f"📹 Short video ({duration:.1f}s) - using 30 frames for better accuracy")
+        else:
+            num_frames = 15  # Standard sampling for longer videos
+            print(f"📹 Standard video ({duration:.1f}s) - using 15 frames")
+        
+        # 4. Extract Frames
+        frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 4. Call AI API with enhanced forensic prompt
+        # 5. Call AI API with enhanced forensic prompt
         prompt = """
     You are an EXPERT AI Video Forensics Analyst specializing in detecting synthetic/AI-generated videos. 
     Modern AI video generators (Sora, Runway Gen-3, Pika, Kling, etc.) have become extremely convincing, 
@@ -309,7 +324,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     CRITICAL: Be HIGHLY SUSPICIOUS. Even professional-looking videos can be AI-generated. 
     When in doubt, lean toward marking as AI-generated rather than missing a deepfake.
 
-    🔍 ANALYSIS FRAMEWORK - Examine these 15 sequential frames for:
+    🔍 ANALYSIS FRAMEWORK - Examine these sequential frames for:
 
     1. TEMPORAL COHERENCE VIOLATIONS:
        - Frame-to-frame consistency breaks (subtle morphing, texture shifting)
@@ -371,7 +386,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
 
     MANDATORY REQUIREMENTS:
     1. "reasoning": List 4-6 specific observations (what you saw, not technical jargon)
-    2. "trajectoryData": Generate 15-20 realistic coordinate points
+    2. "trajectoryData": Generate 15-30 realistic coordinate points (matching frame count)
     3. "modelDetected": Identify the likely source:
        - If AI: "Sora", "Runway Gen-3", "Pika", "Kling", "Unknown AI Model"
        - If Real: "Real Camera"
