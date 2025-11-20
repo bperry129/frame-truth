@@ -539,20 +539,17 @@ async def check_ip(request: Request):
 
 # Mount frontend static files AFTER all API routes are defined
 if os.path.exists("dist"):
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
+    # Serve static assets first
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
     
-    # Serve static files
-    app.mount("/static", StaticFiles(directory="dist"), name="static")
-    
-    # Catch-all route for React Router (SPA)
+    # Catch-all route for React Router (SPA) - must be last
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
-        # Don't interfere with API routes
+        # Don't interfere with API routes or video files
         if full_path.startswith("api/") or full_path.startswith("videos/"):
             raise HTTPException(status_code=404, detail="Not found")
         
-        # Serve index.html for all other routes (React Router will handle them)
+        # For root path or any other path, serve index.html (React Router will handle routing)
         return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
