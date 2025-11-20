@@ -300,25 +300,65 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 4. Call AI API
+        # 4. Call AI API with enhanced forensic prompt
         prompt = """
-    You are a specialized AI Video Forensics Engine based on the "FrameTruth" (Representation Straightening) methodology.
-    Your task is to detect AI-generated videos by identifying "temporal curvature" anomalies and specific generative artifacts.
+    You are an EXPERT AI Video Forensics Analyst specializing in detecting synthetic/AI-generated videos. 
+    Modern AI video generators (Sora, Runway Gen-3, Pika, Kling, etc.) have become extremely convincing, 
+    but they ALL have subtle telltale signs. Your job is to find them.
 
-    ANALYSIS MODE: You are provided with 15 sequential frames extracted from the video.
+    CRITICAL: Be HIGHLY SUSPICIOUS. Even professional-looking videos can be AI-generated. 
+    When in doubt, lean toward marking as AI-generated rather than missing a deepfake.
 
-    Step 1: Scan for specific AI Artifacts:
-    - Texture Boiling/Flickering
-    - Object Permanence Failures
-    - Physics Violations (Gravity, Lighting, Momentum)
-    - Background Incoherence
-    - Anomalous Morphing
+    🔍 ANALYSIS FRAMEWORK - Examine these 15 sequential frames for:
 
-    Step 2: Evaluate based on FrameTruth Method:
-    - Natural Video: Smooth, straight latent trajectory.
-    - AI Video: Erratic, jagged trajectory.
+    1. TEMPORAL COHERENCE VIOLATIONS:
+       - Frame-to-frame consistency breaks (subtle morphing, texture shifting)
+       - Unnatural motion blur patterns or lack thereof
+       - Inconsistent lighting changes between frames
+       - Objects that subtly change shape/size/position unrealistically
+       - Background elements that "swim" or warp slightly
 
-    Output strictly in JSON format matching this schema:
+    2. PHYSICS & REALITY CHECKS:
+       - Gravity defiance (hair, clothing, liquids behaving impossibly)
+       - Momentum violations (sudden direction changes without force)
+       - Shadow inconsistencies (direction, hardness, color temperature)
+       - Reflection impossibilities (mirrors, water, glass not matching scene)
+       - Depth perception errors (occlusion failures, z-ordering glitches)
+
+    3. SURFACE-LEVEL ARTIFACTS (Common in AI):
+       - Texture "boiling" (subtle flickering/crawling of fine details)
+       - Watercolor effect (overly smooth or plastic-looking surfaces)
+       - Uncanny valley faces (too perfect, symmetrical, or slightly "off")
+       - Repetitive patterns in organic materials (trees, crowds, fabric)
+       - Edge bleeding (objects slightly blending into backgrounds)
+
+    4. OBJECT PERMANENCE FAILURES:
+       - Objects disappearing when occluded then reappearing differently
+       - Details changing between visibility (jewelry, buttons, text)
+       - Background elements morphing or inconsistent between frames
+       - Hand/finger anomalies (extra/missing fingers, unnatural poses)
+
+    5. GENERATION MODEL SIGNATURES:
+       - Sora: Overly cinematic, perfect composition, slight dreamlike quality
+       - Runway: Clean but sometimes too smooth, corporate aesthetic
+       - Pika: Quirky physics, exaggerated movements
+       - Stable Video: Lower resolution artifacts, more obvious inconsistencies
+
+    ⚠️ RED FLAGS TO NEVER IGNORE:
+    - ANY physics violation, no matter how small
+    - Unnatural smoothness or "perfection" in organic textures
+    - Temporal inconsistencies in fine details (hair, fabric, particles)
+    - Lighting that doesn't match shadow direction
+    - Motion that looks "floaty" or lacks proper acceleration
+    - Background that seems painted or too static while foreground moves
+
+    📊 SCORING GUIDELINES:
+    - curvatureScore: 0-30 = Real, 31-60 = Suspicious, 61-100 = Likely AI
+    - If you see MULTIPLE red flags, err on the side of "AI-generated"
+    - Real camera footage is NEVER perfect - look for natural imperfections
+    - Modern AI videos can be 95% convincing - focus on the 5% that's wrong
+
+    Output STRICTLY in JSON format:
     {
         "isAi": boolean,
         "confidence": number (0-100),
@@ -329,10 +369,17 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         "modelDetected": string
     }
 
-    IMPORTANT INSTRUCTIONS:
-    1. "reasoning": Provide CLEAR, SIMPLE explanations suitable for a general audience. Avoid jargon.
-    2. "trajectoryData": You MUST populate this with 15-20 coordinate points simulating the motion path.
-    3. "modelDetected": Best guess of the source. If it looks like a real video, set this to "Real Camera". If it looks AI but specific model is unknown, set to "Unknown AI Model". DO NOT return "N/A".
+    MANDATORY REQUIREMENTS:
+    1. "reasoning": List 4-6 specific observations (what you saw, not technical jargon)
+    2. "trajectoryData": Generate 15-20 realistic coordinate points
+    3. "modelDetected": Identify the likely source:
+       - If AI: "Sora", "Runway Gen-3", "Pika", "Kling", "Unknown AI Model"
+       - If Real: "Real Camera"
+    4. "isAi": Set to true if curvatureScore > 40 OR you see 2+ red flags
+    5. "confidence": Lower this if you're uncertain, but be suspicious by default
+
+    Remember: False negatives (missing AI videos) are MORE DANGEROUS than false positives.
+    When analyzing, assume AI until proven otherwise.
         """
 
         content_parts = [{"type": "text", "text": prompt}]
