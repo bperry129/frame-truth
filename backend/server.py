@@ -254,40 +254,42 @@ async def download_video(request: DownloadRequest):
             'noplaylist': True,
             'geo_bypass': True,
             
-            # Critical: Use Android client to bypass bot detection
+            # ENHANCED: Multiple client strategies to bypass YouTube bot detection
             'extractor_args': {
                 'youtube': {
-                    # Force Android client (most reliable)
-                    'player_client': ['android'],
+                    # Try multiple clients in order of reliability
+                    'player_client': ['ios', 'android', 'web'],
                     'skip': ['dash', 'hls'],
-                    'player_skip': ['webpage', 'configs'],
+                    'player_skip': ['configs'],
                 }
             },
             
-            # Enhanced headers mimicking mobile Chrome
+            # Enhanced headers mimicking iOS (YouTube blocks Android less on iOS)
             'http_headers': {
-                'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)',
                 'Accept': '*/*',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate',
-                'X-YouTube-Client-Name': '3',
-                'X-YouTube-Client-Version': '19.09.37',
             },
             
             # Additional anti-bot measures
-            'sleep_interval': 1,
-            'max_sleep_interval': 5,
-            'retries': 10,
-            'fragment_retries': 10,
-            'file_access_retries': 5,
+            'sleep_interval': 2,  # Increased from 1
+            'max_sleep_interval': 10,  # Increased from 5
+            'retries': 15,  # Increased
+            'fragment_retries': 15,
+            'file_access_retries': 10,
             
             # Network settings
-            'socket_timeout': 30,
+            'socket_timeout': 60,  # Increased timeout
             'source_address': None,
             
             # Avoid potential issues
             'nocheckcertificate': True,
             'prefer_insecure': False,
+            
+            # CRITICAL: Add extractor options to avoid detection
+            'extract_flat': False,
+            'age_limit': None,
         }
         
         print(f"📁 Download path: {filepath}")
