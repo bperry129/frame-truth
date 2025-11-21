@@ -88,8 +88,6 @@ Thumbs.db
 tmp/
 temp/
 downloads/
-cookies/
-youtube_cookies.txt
 
 # Vercel
 .vercel
