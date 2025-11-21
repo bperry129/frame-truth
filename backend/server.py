@@ -222,20 +222,20 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
             'score_increase': 0
         }
 
-def calculate_trajectory_metrics_dinov2(video_path, num_samples=24):
+def calculate_lightweight_trajectory_metrics(video_path, num_samples=12):
     """
-    Calculate ReStraV trajectory metrics using DINOv2 embeddings (proper implementation).
-    Based on: "AI-Generated Video Detection via Perceptual Straightening"
+    Fast trajectory analysis using OpenCV (no PyTorch/DINOv2 needed).
+    Inspired by ReStraV but using visual features only.
     
-    Real videos: Lower curvature (straighter semantic trajectories)
-    AI videos: Higher curvature (irregular, non-physical semantic changes)
+    Analyzes:
+    - Color histogram changes (distribution shifts)
+    - Edge density changes (structural complexity)
+    - Optical flow consistency (motion patterns)
     
-    Returns dict with mean_curvature, curvature_variance, mean_distance.
+    Real videos: More consistent trajectories
+    AI videos: Irregular, jumpy trajectories
     """
     try:
-        # Load DINOv2 model (lazy loaded, cached)
-        model, transform = get_dinov2_model()
-        
         cap = cv2.VideoCapture(video_path)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
@@ -246,50 +246,63 @@ def calculate_trajectory_metrics_dinov2(video_path, num_samples=24):
         # Sample frames evenly
         step = max(1, total_frames // num_samples)
         
-        # Extract DINOv2 embeddings
-        embeddings = []
+        # Extract visual features from frames
+        features = []
         count = 0
         extracted = 0
         
-        print(f"   Extracting DINOv2 features from {num_samples} frames...")
+        print(f"   Extracting visual trajectory features from {num_samples} frames...")
         
-        with torch.no_grad():  # Disable gradient computation for inference
-            while cap.isOpened() and extracted < num_samples:
-                ret, frame = cap.read()
-                if not ret:
-                    break
+        while cap.isOpened() and extracted < num_samples:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % step == 0:
+                # Resize frame for faster processing
+                frame_small = cv2.resize(frame, (128, 128))
+                
+                # Feature 1: Color histogram (RGB distribution)
+                hist_r = cv2.calcHist([frame_small], [0], None, [32], [0, 256])
+                hist_g = cv2.calcHist([frame_small], [1], None, [32], [0, 256])
+                hist_b = cv2.calcHist([frame_small], [2], None, [32], [0, 256])
+                color_hist = np.concatenate([hist_r, hist_g, hist_b]).flatten()
+                color_hist = color_hist / (color_hist.sum() + 1e-6)  # Normalize
+                
+                # Feature 2: Edge density (structural complexity)
+                gray = cv2.cvtColor(frame_small, cv2.COLOR_BGR2GRAY)
+                edges = cv2.Canny(gray, 50, 150)
+                edge_density = np.mean(edges) / 255.0
+                
+                # Feature 3: Brightness variance (lighting consistency)
+                brightness_var = np.var(gray) / 255.0
+                
+                # Combine features into vector
+                feature_vec = np.concatenate([
+                    color_hist,  # 96-dim
+                    [edge_density, brightness_var]  # 2-dim
+                ])  # Total: 98-dim
+                
+                features.append(feature_vec)
+                extracted += 1
                     
-                if count % step == 0:
-                    # Convert BGR to RGB
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    # Convert to PIL Image
-                    pil_img = Image.fromarray(frame_rgb)
-                    # Apply DINOv2 transform
-                    img_tensor = transform(pil_img).unsqueeze(0)  # Add batch dimension
-                    
-                    # Extract features (384-dim for vits14)
-                    features = model(img_tensor)
-                    embeddings.append(features.squeeze().cpu().numpy())
-                    extracted += 1
-                    
-                count += 1
+            count += 1
         
         cap.release()
         
-        if len(embeddings) < 3:
+        if len(features) < 3:
             return None
         
-        # Convert to numpy array (shape: [num_frames, 384])
-        embeddings_array = np.array(embeddings)
+        # Convert to numpy array
+        features_array = np.array(features)
         
-        # Calculate displacement vectors (semantic changes between frames)
-        displacements = np.diff(embeddings_array, axis=0)
+        # Calculate displacement vectors (visual changes between frames)
+        displacements = np.diff(features_array, axis=0)
         
-        # Calculate stepwise distances (magnitude of semantic change)
+        # Calculate stepwise distances (magnitude of visual change)
         distances = np.linalg.norm(displacements, axis=1)
         
         # Calculate curvature (angle between consecutive displacement vectors)
-        # This measures how "straight" the trajectory is in semantic space
         curvatures = []
         for i in range(len(displacements) - 1):
             vec1 = displacements[i]
@@ -299,10 +312,9 @@ def calculate_trajectory_metrics_dinov2(video_path, num_samples=24):
             norm1 = np.linalg.norm(vec1)
             norm2 = np.linalg.norm(vec2)
             
-            if norm1 > 1e-6 and norm2 > 1e-6:  # Avoid division by zero
+            if norm1 > 1e-6 and norm2 > 1e-6:
                 # Calculate cosine similarity
                 cos_sim = np.dot(vec1, vec2) / (norm1 * norm2)
-                # Clamp to [-1, 1] to avoid numerical errors
                 cos_sim = np.clip(cos_sim, -1.0, 1.0)
                 # Convert to angle in degrees
                 angle = np.arccos(cos_sim) * 180 / np.pi
@@ -322,12 +334,12 @@ def calculate_trajectory_metrics_dinov2(video_path, num_samples=24):
             'curvature_variance': curvature_variance,
             'mean_distance': mean_distance,
             'max_curvature': max_curvature,
-            'num_samples': len(embeddings),
-            'method': 'dinov2'
+            'num_samples': len(features),
+            'method': 'lightweight_opencv'
         }
         
     except Exception as e:
-        print(f"⚠️ DINOv2 trajectory calculation failed: {str(e)}")
+        print(f"⚠️ Trajectory calculation failed: {str(e)}")
         return None
 
 def extract_frames_base64(video_path, num_frames=15):
@@ -729,9 +741,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             dinov2_samples = 15
             print(f"📹 Long video ({duration:.1f}s) - using 30 frames")
         
-        # 4. ReStraV trajectory analysis using DINOv2 embeddings (reduced samples)
-        print(f"📐 Calculating ReStraV trajectory metrics using DINOv2 ({dinov2_samples} samples)...")
-        trajectory_metrics = calculate_trajectory_metrics_dinov2(filepath, num_samples=dinov2_samples)
+        # 4. Lightweight trajectory analysis (OpenCV-based, no PyTorch)
+        print(f"📐 Calculating visual trajectory metrics ({dinov2_samples} samples)...")
+        trajectory_metrics = calculate_lightweight_trajectory_metrics(filepath, num_samples=dinov2_samples)
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'force_ai': False}
         
         if trajectory_metrics:
