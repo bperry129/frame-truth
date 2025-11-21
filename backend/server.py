@@ -734,6 +734,12 @@ async def download_video(request: DownloadRequest):
         filename = f"{file_id}.%(ext)s"  # Let yt-dlp determine the extension
         filepath = os.path.join(DOWNLOAD_DIR, f"{file_id}")
         
+        # Detect platform for optimized settings
+        is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
+        is_tiktok = "tiktok.com" in request.url
+        is_instagram = "instagram.com" in request.url
+        is_twitter = "twitter.com" in request.url or "x.com" in request.url
+        
         ydl_opts = {
             # Use mobile format (less likely to be blocked)
             # Flexible format for Shorts and regular videos
@@ -745,31 +751,6 @@ async def download_video(request: DownloadRequest):
             'max_filesize': 100 * 1024 * 1024,
             'noplaylist': True,
             'geo_bypass': True,
-            
-            # ENHANCED: Multiple client strategies to bypass YouTube bot detection
-            'extractor_args': {
-                'youtube': {
-                    # Try multiple clients in order of reliability
-                    'player_client': ['ios', 'android', 'web'],
-                    'skip': ['dash', 'hls'],
-                    'player_skip': ['configs'],
-                }
-            },
-            
-            # Enhanced headers mimicking iOS (YouTube blocks Android less on iOS)
-            'http_headers': {
-                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-            },
-            
-            # Additional anti-bot measures
-            'sleep_interval': 2,  # Increased from 1
-            'max_sleep_interval': 10,  # Increased from 5
-            'retries': 15,  # Increased
-            'fragment_retries': 15,
-            'file_access_retries': 10,
             
             # Network settings
             'socket_timeout': 60,  # Increased timeout
@@ -784,10 +765,111 @@ async def download_video(request: DownloadRequest):
             'age_limit': None,
         }
         
-        # CRITICAL: Use cookies if available (100% reliable bypass)
-        if os.path.exists(COOKIES_FILE):
+        # Platform-specific optimizations
+        if is_youtube:
+            # YouTube-specific settings
+            ydl_opts.update({
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'android', 'web'],
+                        'skip': ['dash', 'hls'],
+                        'player_skip': ['configs'],
+                    }
+                },
+                'http_headers': {
+                    'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                'sleep_interval': 2,
+                'max_sleep_interval': 10,
+                'retries': 15,
+                'fragment_retries': 15,
+                'file_access_retries': 10,
+            })
+            print(f"🎥 YouTube detected - using YouTube-optimized settings")
+            
+        elif is_tiktok:
+            # TikTok-specific settings (no cookies, different headers)
+            ydl_opts.update({
+                'extractor_args': {
+                    'tiktok': {
+                        'webpage_url_basename': 'video',
+                    }
+                },
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Referer': 'https://www.tiktok.com/',
+                },
+                'sleep_interval': 1,
+                'max_sleep_interval': 5,
+                'retries': 10,
+                'fragment_retries': 10,
+                'file_access_retries': 5,
+            })
+            print(f"📱 TikTok detected - using TikTok-optimized settings (no cookies)")
+            
+        elif is_instagram:
+            # Instagram-specific settings
+            ydl_opts.update({
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                'sleep_interval': 1,
+                'retries': 8,
+                'fragment_retries': 8,
+                'file_access_retries': 5,
+            })
+            print(f"📸 Instagram detected - using Instagram-optimized settings")
+            
+        elif is_twitter:
+            # Twitter/X-specific settings
+            ydl_opts.update({
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                'sleep_interval': 1,
+                'retries': 8,
+                'fragment_retries': 8,
+                'file_access_retries': 5,
+            })
+            print(f"🐦 Twitter/X detected - using Twitter-optimized settings")
+            
+        else:
+            # Generic social media settings
+            ydl_opts.update({
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                },
+                'sleep_interval': 1,
+                'retries': 8,
+                'fragment_retries': 8,
+                'file_access_retries': 5,
+            })
+            print(f"🌐 Generic platform detected - using universal settings")
+        
+        # CRITICAL: Use cookies ONLY for YouTube (platform-specific)
+        is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
+        if is_youtube and os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
-            print(f"🍪 Using cookies from: {COOKIES_FILE}")
+            print(f"🍪 Using YouTube cookies from: {COOKIES_FILE}")
+        elif is_youtube:
+            print(f"⚠️ YouTube URL detected but no cookies available - may encounter bot detection")
+        else:
+            print(f"📱 Non-YouTube platform detected - skipping cookie authentication")
         
         print(f"📁 Download path: {filepath}")
         
