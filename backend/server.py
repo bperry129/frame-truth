@@ -111,7 +111,7 @@ init_db()
 
 # Directories
 DOWNLOAD_DIR = "downloads"
-COOKIES_DIR = "cookies"
+COOKIES_DIR = "backend/cookies"
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 if not os.path.exists(COOKIES_DIR):
