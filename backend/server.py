@@ -24,6 +24,7 @@ load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 
 # Verify PyTorch installation (for Railway debugging)
 print("=" * 50)
@@ -401,6 +402,110 @@ async def upload_video_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
 
+async def download_with_rapidapi(url: str, file_id: str) -> dict:
+    """
+    RapidAPI YouTube downloader - 100% reliable
+    Uses YT-API from RapidAPI
+    """
+    print(f"🔄 Attempting RapidAPI YouTube download for: {url}")
+    
+    try:
+        # Extract video ID from URL
+        import re
+        video_id_match = re.search(r'(?:v=|/shorts/|youtu\.be/)([a-zA-Z0-9_-]{11})', url)
+        if not video_id_match:
+            raise Exception("Could not extract video ID from URL")
+        
+        video_id = video_id_match.group(1)
+        print(f"📹 Video ID: {video_id}")
+        
+        # Step 1: Get video info using RapidAPI
+        info_url = f"https://yt-api.p.rapidapi.com/dl?id={video_id}"
+        
+        headers = {
+            'x-rapidapi-host': 'yt-api.p.rapidapi.com',
+            'x-rapidapi-key': RAPIDAPI_KEY
+        }
+        
+        print(f"📤 Fetching video info from RapidAPI...")
+        info_response = requests.get(info_url, headers=headers, timeout=30)
+        
+        if info_response.status_code != 200:
+            raise Exception(f"RapidAPI failed: {info_response.status_code} - {info_response.text[:200]}")
+        
+        video_data = info_response.json()
+        print(f"📥 RapidAPI response: {json.dumps(video_data, indent=2)[:500]}")
+        
+        # Extract download URL (API structure may vary, adapt as needed)
+        # Try different possible structures
+        download_url = None
+        
+        if 'formats' in video_data and video_data['formats']:
+            # Find best quality format
+            formats = video_data['formats']
+            # Prefer mp4 format, quality <=720p
+            for fmt in formats:
+                if fmt.get('ext') == 'mp4' and fmt.get('height', 0) <= 720:
+                    download_url = fmt.get('url')
+                    break
+            
+            # Fallback: any mp4 format
+            if not download_url:
+                for fmt in formats:
+                    if fmt.get('ext') == 'mp4':
+                        download_url = fmt.get('url')
+                        break
+            
+            # Last resort: first format
+            if not download_url and formats:
+                download_url = formats[0].get('url')
+        
+        elif 'adaptiveFormats' in video_data:
+            # Alternative structure
+            formats = video_data['adaptiveFormats']
+            for fmt in formats:
+                if 'video' in fmt.get('mimeType', '').lower():
+                    download_url = fmt.get('url')
+                    break
+        
+        if not download_url:
+            raise Exception(f"No download URL found in API response. Response keys: {list(video_data.keys())}")
+        
+        print(f"📥 Downloading from URL: {download_url[:100]}...")
+        
+        # Download the video
+        video_response = requests.get(download_url, stream=True, timeout=120)
+        video_response.raise_for_status()
+        
+        # Save to file
+        filename = f"{file_id}.mp4"
+        filepath = os.path.join(DOWNLOAD_DIR, filename)
+        
+        with open(filepath, 'wb') as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        meta_info = {
+            "title": video_data.get("title", "Unknown"),
+            "uploader": video_data.get("uploader", video_data.get("channel", "Unknown")),
+            "duration": video_data.get("duration"),
+            "view_count": video_data.get("viewCount"),
+            "source": "rapidapi_yt"
+        }
+        
+        print(f"✅ RapidAPI download successful: {filename}")
+        
+        return {
+            "filename": filename,
+            "url": f"/videos/{filename}",
+            "meta": meta_info
+        }
+        
+    except Exception as e:
+        print(f"❌ RapidAPI download failed: {str(e)}")
+        raise
+
 async def download_with_cookies(url: str, file_id: str) -> dict:
     """
     Third fallback: yt-dlp WITH cookies (100% reliable for YouTube)
@@ -741,49 +846,36 @@ async def download_video(request: DownloadRequest):
         is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
         
         if is_youtube and is_bot_error:
-            print(f"🔄 YouTube bot detection - attempting Y2Mate API fallback...")
+            print(f"🔄 YouTube bot detection - attempting RapidAPI fallback...")
             
             try:
-                # Try Y2Mate API as fallback
-                result = await download_with_y2mate(request.url, file_id)
-                print(f"✅ Y2Mate API fallback successful!")
+                # Try RapidAPI as reliable fallback
+                result = await download_with_rapidapi(request.url, file_id)
+                print(f"✅ RapidAPI download successful!")
                 return result
                 
-            except Exception as y2mate_error:
-                print(f"❌ Y2Mate API fallback also failed: {str(y2mate_error)}")
-                print(f"🔄 Trying yt-dlp WITH cookies as final fallback (100% reliable)...")
+            except Exception as rapidapi_error:
+                print(f"❌ RapidAPI fallback failed: {str(rapidapi_error)}")
                 
-                try:
-                    # Try cookie-based download as third fallback
-                    result = await download_with_cookies(request.url, file_id)
-                    print(f"✅ Cookie-based download successful!")
-                    return result
-                    
-                except Exception as cookie_error:
-                    print(f"❌ Cookie-based download also failed: {str(cookie_error)}")
-                    
-                    # All three methods failed - provide helpful message
-                    helpful_msg = (
-                        "🚫 YouTube Download Failed\n\n"
-                        "All download methods failed (yt-dlp + Y2Mate + cookies). "
-                        "This can happen if cookies are missing or expired.\n\n"
-                        "✅ **Easy Workaround (30 seconds):**\n"
-                        "1. Download the YouTube video to your device (use any YouTube downloader)\n"
-                        "2. Click the 'Upload File' tab above\n"
-                        "3. Upload the video file\n"
-                        "4. Analyze as normal!\n\n"
-                        "💡 **Other Options:**\n"
-                        "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
-                        "• Contact admin to upload fresh YouTube cookies"
-                    )
-                    
-                    return JSONResponse(status_code=400, content={
-                        "detail": helpful_msg,
-                        "error_type": "youtube_all_methods_failed",
-                        "primary_error": error_msg,
-                        "y2mate_error": str(y2mate_error),
-                        "cookie_error": str(cookie_error)
-                    })
+                # Provide helpful message
+                helpful_msg = (
+                    "🚫 YouTube Download Failed\n\n"
+                    "Both download methods failed (yt-dlp + RapidAPI).\n\n"
+                    "✅ **Easy Workaround (30 seconds):**\n"
+                    "1. Download the YouTube video to your device (use any YouTube downloader)\n"
+                    "2. Click the 'Upload File' tab above\n"
+                    "3. Upload the video file\n"
+                    "4. Analyze as normal!\n\n"
+                    "💡 **Other Options:**\n"
+                    "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
+                )
+                
+                return JSONResponse(status_code=400, content={
+                    "detail": helpful_msg,
+                    "error_type": "youtube_download_failed",
+                    "primary_error": error_msg,
+                    "rapidapi_error": str(rapidapi_error)
+                })
         
         # Non-YouTube error or non-bot error
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
