@@ -1212,6 +1212,15 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             raise Exception(f"AI API Error: {response.text}")
         
         ai_res = response.json()
+        
+        # Debug: Log the response structure
+        print(f"🔍 AI API Response keys: {list(ai_res.keys())}")
+        if 'error' in ai_res:
+            raise Exception(f"AI API Error: {ai_res['error']}")
+        
+        if 'choices' not in ai_res:
+            raise Exception(f"Unexpected AI API response format: {json.dumps(ai_res, indent=2)[:500]}")
+        
         content = ai_res['choices'][0]['message']['content']
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
