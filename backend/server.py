@@ -411,7 +411,7 @@ async def download_with_cookies(url: str, file_id: str) -> dict:
         filepath = os.path.join(DOWNLOAD_DIR, f"{file_id}")
         
         ydl_opts = {
-            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best',
+            'format': 'best[height<=720]/best',
             'outtmpl': filepath + '.%(ext)s',
             'quiet': False,
             'no_warnings': False,
@@ -631,7 +631,8 @@ async def download_video(request: DownloadRequest):
         
         ydl_opts = {
             # Use mobile format (less likely to be blocked)
-            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best',
+            # Flexible format for Shorts and regular videos
+            'format': 'best[height<=720]/best',
             'outtmpl': filepath + '.%(ext)s',
             'quiet': False,  # Enable logging for debugging
             'no_warnings': False,
