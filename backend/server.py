@@ -904,23 +904,23 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # Optimized frame count for Railway (reduced for speed)
+        # High frame count for maximum AI detection accuracy
         if duration < 10:
-            num_frames = 15  # Very short clips
-            dinov2_samples = 12  # Reduced from 24
-            print(f"📹 Very short video ({duration:.1f}s) - using 15 frames")
-        elif duration < 30:
-            num_frames = 20  # Short videos
+            num_frames = 100  # Very short clips
             dinov2_samples = 12
-            print(f"📹 Short video ({duration:.1f}s) - using 20 frames")
+            print(f"📹 Very short video ({duration:.1f}s) - using 100 frames")
+        elif duration < 30:
+            num_frames = 120  # Short videos
+            dinov2_samples = 12
+            print(f"📹 Short video ({duration:.1f}s) - using 120 frames")
         elif duration < 60:
-            num_frames = 25  # Medium videos
+            num_frames = 140  # Medium videos
             dinov2_samples = 15
-            print(f"📹 Medium video ({duration:.1f}s) - using 25 frames")
+            print(f"📹 Medium video ({duration:.1f}s) - using 140 frames")
         else:
-            num_frames = 30  # Longer videos
+            num_frames = 150  # Longer videos
             dinov2_samples = 15
-            print(f"📹 Long video ({duration:.1f}s) - using 30 frames")
+            print(f"📹 Long video ({duration:.1f}s) - using 150 frames")
         
         # 4. Lightweight trajectory analysis (OpenCV-based, no PyTorch)
         print(f"📐 Calculating visual trajectory metrics ({dinov2_samples} samples)...")
