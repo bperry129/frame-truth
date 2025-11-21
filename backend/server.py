@@ -401,6 +401,87 @@ async def upload_video_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Upload failed: {str(e)}"})
 
+async def download_with_savefrom(url: str, file_id: str) -> dict:
+    """
+    Third fallback: SaveFrom.net API
+    """
+    print(f"🔄 Attempting SaveFrom.net API fallback for: {url}")
+    
+    try:
+        # SaveFrom.net API endpoint
+        api_url = "https://api.savefrom.net/info"
+        
+        params = {
+            "url": url
+        }
+        
+        print(f"📤 SaveFrom.net API request for: {url}")
+        
+        response = requests.get(
+            api_url,
+            params=params,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout=30
+        )
+        
+        print(f"📥 SaveFrom response status: {response.status_code}")
+        print(f"📥 SaveFrom response: {response.text[:500]}")
+        
+        if response.status_code != 200:
+            raise Exception(f"SaveFrom failed with status {response.status_code}")
+        
+        # Parse response (SaveFrom returns JSON with download links)
+        data = response.json()
+        
+        if not data or "url" not in data:
+            raise Exception("No download URL in SaveFrom response")
+        
+        # Get best quality link
+        download_links = data.get("url", [])
+        if not download_links:
+            raise Exception("No download links available")
+        
+        # Usually first link is best quality
+        best_link = download_links[0] if isinstance(download_links, list) else download_links.get("url")
+        
+        if not best_link:
+            raise Exception("Could not extract download URL")
+        
+        print(f"📥 Downloading from SaveFrom: {best_link[:100]}...")
+        
+        # Download the video
+        video_response = requests.get(best_link, stream=True, timeout=120, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        video_response.raise_for_status()
+        
+        # Save to file
+        filename = f"{file_id}.mp4"
+        filepath = os.path.join(DOWNLOAD_DIR, filename)
+        
+        with open(filepath, 'wb') as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        print(f"✅ SaveFrom download successful: {filename}")
+        
+        return {
+            "filename": filename,
+            "url": f"/videos/{filename}",
+            "meta": {
+                "title": data.get("meta", {}).get("title", "Video"),
+                "uploader": "Unknown",
+                "source": "savefrom_api"
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ SaveFrom API failed: {str(e)}")
+        raise
+
 async def download_with_y2mate(url: str, file_id: str) -> dict:
     """
     Fallback download method using Y2Mate API (for YouTube bot detection bypass)
@@ -676,28 +757,39 @@ async def download_video(request: DownloadRequest):
                 
             except Exception as y2mate_error:
                 print(f"❌ Y2Mate API fallback also failed: {str(y2mate_error)}")
+                print(f"🔄 Trying SaveFrom.net as final fallback...")
                 
-                # Both methods failed - provide helpful message
-                helpful_msg = (
-                    "🚫 YouTube Download Failed\n\n"
-                    "Both download methods failed (yt-dlp + Y2Mate API). "
-                    "This can happen with certain restricted videos.\n\n"
-                    "✅ **Easy Workaround (30 seconds):**\n"
-                    "1. Download the YouTube video to your device (use any YouTube downloader)\n"
-                    "2. Click the 'Upload File' tab above\n"
-                    "3. Upload the video file\n"
-                    "4. Analyze as normal!\n\n"
-                    "💡 **Other Options:**\n"
-                    "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
-                    "• Wait 10-15 minutes and try again"
-                )
-                
-                return JSONResponse(status_code=400, content={
-                    "detail": helpful_msg,
-                    "error_type": "youtube_all_methods_failed",
-                    "primary_error": error_msg,
-                    "fallback_error": str(y2mate_error)
-                })
+                try:
+                    # Try SaveFrom.net as third fallback
+                    result = await download_with_savefrom(request.url, file_id)
+                    print(f"✅ SaveFrom.net fallback successful!")
+                    return result
+                    
+                except Exception as savefrom_error:
+                    print(f"❌ SaveFrom.net also failed: {str(savefrom_error)}")
+                    
+                    # All three methods failed - provide helpful message
+                    helpful_msg = (
+                        "🚫 YouTube Download Failed\n\n"
+                        "All download methods failed (yt-dlp + Y2Mate + SaveFrom.net). "
+                        "This can happen with certain restricted videos.\n\n"
+                        "✅ **Easy Workaround (30 seconds):**\n"
+                        "1. Download the YouTube video to your device (use any YouTube downloader)\n"
+                        "2. Click the 'Upload File' tab above\n"
+                        "3. Upload the video file\n"
+                        "4. Analyze as normal!\n\n"
+                        "💡 **Other Options:**\n"
+                        "• Try a different platform (TikTok, Instagram, Twitter all work great!)\n"
+                        "• Wait 10-15 minutes and try again"
+                    )
+                    
+                    return JSONResponse(status_code=400, content={
+                        "detail": helpful_msg,
+                        "error_type": "youtube_all_methods_failed",
+                        "primary_error": error_msg,
+                        "y2mate_error": str(y2mate_error),
+                        "savefrom_error": str(savefrom_error)
+                    })
         
         # Non-YouTube error or non-bot error
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
