@@ -711,23 +711,27 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # PHASE 1 IMPROVEMENT: Adaptive frame count (50-100 frames for better accuracy)
+        # Optimized frame count for Railway (reduced for speed)
         if duration < 10:
-            num_frames = 50  # Very short clips (e.g., TikTok, Instagram Reels)
-            print(f"📹 Very short video ({duration:.1f}s) - using 50 frames for maximum accuracy")
+            num_frames = 15  # Very short clips
+            dinov2_samples = 12  # Reduced from 24
+            print(f"📹 Very short video ({duration:.1f}s) - using 15 frames")
         elif duration < 30:
-            num_frames = 75  # Short videos (Shorts, brief clips)
-            print(f"📹 Short video ({duration:.1f}s) - using 75 frames for high accuracy")
+            num_frames = 20  # Short videos
+            dinov2_samples = 12
+            print(f"📹 Short video ({duration:.1f}s) - using 20 frames")
         elif duration < 60:
-            num_frames = 100  # Medium videos
-            print(f"📹 Medium video ({duration:.1f}s) - using 100 frames for comprehensive analysis")
+            num_frames = 25  # Medium videos
+            dinov2_samples = 15
+            print(f"📹 Medium video ({duration:.1f}s) - using 25 frames")
         else:
-            num_frames = 100  # Longer videos - cap at 100 to balance cost/accuracy
-            print(f"📹 Long video ({duration:.1f}s) - using 100 frames (capped)")
+            num_frames = 30  # Longer videos
+            dinov2_samples = 15
+            print(f"📹 Long video ({duration:.1f}s) - using 30 frames")
         
-        # 4. ReStraV trajectory analysis using DINOv2 embeddings
-        print(f"📐 Calculating ReStraV trajectory metrics using DINOv2...")
-        trajectory_metrics = calculate_trajectory_metrics_dinov2(filepath, num_samples=24)
+        # 4. ReStraV trajectory analysis using DINOv2 embeddings (reduced samples)
+        print(f"📐 Calculating ReStraV trajectory metrics using DINOv2 ({dinov2_samples} samples)...")
+        trajectory_metrics = calculate_trajectory_metrics_dinov2(filepath, num_samples=dinov2_samples)
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'force_ai': False}
         
         if trajectory_metrics:
