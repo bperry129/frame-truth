@@ -1202,7 +1202,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                  "HTTP-Referer": "https://frametruth.com",
              },
              json={
-                 "model": "google/gemini-2.0-flash-exp",
+                 "model": "google/gemini-2.0-flash-exp:free",
                  "messages": [{"role": "user", "content": content_parts}],
                  "response_format": {"type": "json_object"}
              }
