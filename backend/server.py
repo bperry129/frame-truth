@@ -1202,7 +1202,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                  "HTTP-Referer": "https://frametruth.com",
              },
              json={
-                 "model": "meta-llama/llama-3.2-90b-vision-instruct",
+                 "model": "anthropic/claude-3.5-haiku",
                  "messages": [{"role": "user", "content": content_parts}],
                  "response_format": {"type": "json_object"}
              }
