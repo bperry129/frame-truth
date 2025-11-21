@@ -932,26 +932,26 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             curv_var = trajectory_metrics['curvature_variance']
             mean_dist = trajectory_metrics['mean_distance']
             
-            # ReStraV paper findings (semantic space with DINOv2):
-            # Real videos: mean_curvature typically 60-80° (straighter semantic trajectories)
-            # AI videos: mean_curvature typically 85-110° (irregular semantic changes)
-            # Threshold: 82° is a good separator
+            # NOTE: Using lightweight visual features (not semantic DINOv2)
+            # Visual curvature thresholds are MUCH higher than semantic thresholds
+            # Real videos with camera motion, zooms, scene changes = high visual curvature (normal!)
+            # Only extremely irregular patterns indicate AI
             
-            if mean_curv > 90:  # Strong AI indicator
-                trajectory_boost['score_increase'] = min(40, int((mean_curv - 90) * 2))  # Up to +40
-                trajectory_boost['confidence_boost'] = min(30, int((mean_curv - 90) * 1.5))  # Up to +30
+            if mean_curv > 130:  # VERY strong AI indicator
+                trajectory_boost['score_increase'] = min(40, int((mean_curv - 130) * 2))  # Up to +40
+                trajectory_boost['confidence_boost'] = min(30, int((mean_curv - 130) * 1.5))  # Up to +30
                 trajectory_boost['has_high_curvature'] = True
                 trajectory_boost['force_ai'] = True  # Override visual analysis
-                print(f"🚨 VERY HIGH SEMANTIC CURVATURE: {mean_curv:.1f}° - STRONG AI INDICATOR")
+                print(f"🚨 EXTREMELY HIGH VISUAL CURVATURE: {mean_curv:.1f}° - VERY STRONG AI INDICATOR")
                 print(f"   Forcing AI classification (overriding visual analysis)")
-            elif mean_curv > 82:  # Moderate AI indicator
-                trajectory_boost['score_increase'] = min(25, int((mean_curv - 82) * 3))  # Up to +25
-                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 82) * 2.5))  # Up to +20
+            elif mean_curv > 110:  # Moderate AI indicator
+                trajectory_boost['score_increase'] = min(25, int((mean_curv - 110) * 2))  # Up to +25
+                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 110) * 1.5))  # Up to +20
                 trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ HIGH SEMANTIC CURVATURE: {mean_curv:.1f}° (AI indicator)")
+                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
                 print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             else:
-                print(f"✓ Normal semantic curvature: {mean_curv:.1f}° (natural video)")
+                print(f"✓ Normal visual curvature: {mean_curv:.1f}° (natural video motion)")
         
         # 5. Scan metadata for AI keywords (if URL provided)
         metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
