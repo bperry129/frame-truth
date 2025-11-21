@@ -420,6 +420,8 @@ async def download_with_y2mate(url: str, file_id: str) -> dict:
         }
         
         print(f"📤 Y2Mate analyze request for: {url}")
+        print(f"📤 Y2Mate API endpoint: {analyze_url}")
+        print(f"📤 Payload: {analyze_payload}")
         
         analyze_response = requests.post(
             analyze_url,
@@ -432,6 +434,7 @@ async def download_with_y2mate(url: str, file_id: str) -> dict:
         )
         
         print(f"📥 Y2Mate analyze response status: {analyze_response.status_code}")
+        print(f"📥 Y2Mate analyze response body: {analyze_response.text[:500]}")
         
         if analyze_response.status_code != 200:
             raise Exception(f"Y2Mate analyze failed: {analyze_response.text[:200]}")
