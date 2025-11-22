@@ -776,7 +776,7 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
         # Based on RapidAPI docs, try both POST and GET endpoints
         headers = {
             'x-rapidapi-host': 'download-all-in-one-elite.p.rapidapi.com',
-            'x-rapidapi-key': '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475'
+            'x-rapidapi-key': RAPIDAPI_KEY or '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475'
         }
         
         # Try POST method first (Download URL (p))
