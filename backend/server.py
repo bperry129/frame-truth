@@ -791,15 +791,15 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
     print(f"🔄 Attempting unified API download for: {url}")
     
     try:
-        # Correct headers for Download All in One Elite API
+        # Correct headers for Social Download All in One API
         headers = {
-            'X-RapidAPI-Host': 'download-all-in-one-elite.p.rapidapi.com',
-            'X-RapidAPI-Key': RAPIDAPI_KEY or '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475',
+            'x-rapidapi-host': 'social-download-all-in-one.p.rapidapi.com',
+            'x-rapidapi-key': RAPIDAPI_KEY or '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475',
             'Content-Type': 'application/json'
         }
         
-        # Correct API endpoint and payload format (use root endpoint)
-        api_endpoint = "https://download-all-in-one-elite.p.rapidapi.com/"
+        # Correct API endpoint and payload format
+        api_endpoint = "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink"
         payload = {
             "url": url
         }
