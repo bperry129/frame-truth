@@ -1589,33 +1589,29 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # PERFORMANCE OPTIMIZATION: Drastically reduce frame processing for speed
-        if duration < 10:
-            num_frames = 8   # Very short clips (was 15)
-            dinov2_samples = 6  # (was 12)
-            print(f"📹 Very short video ({duration:.1f}s) - using 8 frames (optimized for speed)")
-        elif duration < 30:
-            num_frames = 10  # Short videos (was 20)
-            dinov2_samples = 6  # (was 12)
-            print(f"📹 Short video ({duration:.1f}s) - using 10 frames (optimized for speed)")
+        # EXTREME PERFORMANCE OPTIMIZATION: Minimal processing for sub-2-minute analysis
+        if duration < 30:
+            num_frames = 5   # Very short clips (was 8)
+            dinov2_samples = 3  # (was 6)
+            print(f"📹 Short video ({duration:.1f}s) - using 5 frames (extreme speed optimization)")
         elif duration < 60:
-            num_frames = 12  # Medium videos (was 25)
-            dinov2_samples = 8  # (was 15)
-            print(f"📹 Medium video ({duration:.1f}s) - using 12 frames (optimized for speed)")
+            num_frames = 6  # Medium videos (was 10)
+            dinov2_samples = 3  # (was 6)
+            print(f"📹 Medium video ({duration:.1f}s) - using 6 frames (extreme speed optimization)")
         else:
-            num_frames = 15  # Longer videos (was 30)
-            dinov2_samples = 8  # (was 15)
-            print(f"📹 Long video ({duration:.1f}s) - using 15 frames (optimized for speed)")
+            num_frames = 8  # Longer videos (was 12)
+            dinov2_samples = 4  # (was 8)
+            print(f"📹 Long video ({duration:.1f}s) - using 8 frames (extreme speed optimization)")
         
-        # 4. PHASE 1: Enhanced trajectory analysis with optical flow
-        print(f"📐 Calculating visual trajectory metrics ({dinov2_samples} samples)...")
-        trajectory_metrics = calculate_lightweight_trajectory_metrics(filepath, num_samples=dinov2_samples)
+        # 4. EXTREME SPEED MODE: Disable slow analysis components temporarily
+        print(f"⚡ SPEED MODE: Skipping slow analysis components to prevent timeout")
         
-        print(f"🌊 Calculating optical flow features ({dinov2_samples} samples)...")
-        optical_flow_metrics = calculate_optical_flow_features(filepath, num_samples=dinov2_samples)
+        # TEMPORARILY DISABLED for speed - these cause 3+ minute timeouts
+        trajectory_metrics = None  # calculate_lightweight_trajectory_metrics(filepath, num_samples=dinov2_samples)
+        optical_flow_metrics = None  # calculate_optical_flow_features(filepath, num_samples=dinov2_samples)
+        ocr_metrics = None  # analyze_text_stability(filepath, num_samples=dinov2_samples)
         
-        print(f"📝 Analyzing text stability with OCR ({dinov2_samples} samples)...")
-        ocr_metrics = analyze_text_stability(filepath, num_samples=dinov2_samples)
+        print(f"⚡ Analysis components disabled - focusing on visual analysis only for sub-2-minute completion")
         
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False}
         
