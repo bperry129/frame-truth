@@ -410,21 +410,53 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
     print(f"🔄 Attempting unified API download for: {url}")
     
     try:
-        # Use the Download All in One Elite API (correct endpoint)
-        api_url = "https://download-all-in-one-elite.p.rapidapi.com/api/download"
-        
+        # Based on RapidAPI docs, try both POST and GET endpoints
         headers = {
             'x-rapidapi-host': 'download-all-in-one-elite.p.rapidapi.com',
-            'x-rapidapi-key': '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475',
-            'Content-Type': 'application/json'
+            'x-rapidapi-key': '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475'
         }
         
-        payload = {
-            "url": url
-        }
-        
-        print(f"📤 Sending request to unified API...")
-        response = requests.post(api_url, headers=headers, json=payload, timeout=30)
+        # Try POST method first (Download URL (p))
+        try:
+            print(f"📤 Trying POST method...")
+            post_headers = {**headers, 'Content-Type': 'application/json'}
+            post_payload = {"url": url}
+            
+            response = requests.post(
+                "https://download-all-in-one-elite.p.rapidapi.com/",
+                headers=post_headers,
+                json=post_payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ POST method successful")
+            else:
+                print(f"❌ POST method failed with status {response.status_code}: {response.text[:200]}")
+                raise Exception(f"POST method failed: {response.status_code}")
+                
+        except Exception as post_error:
+            print(f"❌ POST method failed: {str(post_error)}")
+            
+            # Try GET method as fallback (Download URL (g))
+            try:
+                print(f"📤 Trying GET method as fallback...")
+                response = requests.get(
+                    "https://download-all-in-one-elite.p.rapidapi.com/",
+                    headers=headers,
+                    params={"url": url},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    print(f"✅ GET method successful")
+                else:
+                    print(f"❌ GET method failed with status {response.status_code}: {response.text[:200]}")
+                    raise Exception(f"Both POST and GET methods failed")
+                    
+            except Exception as get_error:
+                print(f"❌ GET method also failed: {str(get_error)}")
+                raise Exception(f"All unified API methods failed. POST: {post_error}, GET: {get_error}")
         
         if response.status_code != 200:
             raise Exception(f"Unified API failed: {response.status_code} - {response.text[:200]}")
@@ -432,12 +464,41 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
         data = response.json()
         print(f"📥 Unified API response: {json.dumps(data, indent=2)[:500]}")
         
-        # Extract download URL from response
+        # Extract download URL from response based on API docs format
         download_url = None
         video_info = {}
         
-        # Handle different response structures
-        if data.get('success') and data.get('data'):
+        # Handle the documented API response format
+        if data.get('medias') and isinstance(data['medias'], list) and len(data['medias']) > 0:
+            # Get the first media item (or find best quality)
+            media_item = data['medias'][0]
+            for media in data['medias']:
+                # Prefer video type and higher quality
+                if media.get('type') == 'video':
+                    media_item = media
+                    break
+            
+            download_url = media_item.get('url')
+            
+            # Extract metadata from main response
+            video_info = {
+                "title": data.get("title", "Video"),
+                "uploader": data.get("author", "Unknown"),
+                "duration": data.get("duration"),
+                "source": "unified_api"
+            }
+            
+        elif data.get('url'):
+            # Direct URL response (fallback)
+            download_url = data['url']
+            video_info = {
+                "title": data.get("title", "Video"),
+                "uploader": data.get("author", "Unknown"),
+                "source": "unified_api"
+            }
+        
+        # Legacy format handling (for backward compatibility)
+        elif data.get('success') and data.get('data'):
             video_data = data['data']
             
             # Try to get the best quality download URL
@@ -465,15 +526,6 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
                 "uploader": video_data.get("author", video_data.get("uploader", "Unknown")),
                 "duration": video_data.get("duration"),
                 "view_count": video_data.get("view_count"),
-                "source": "unified_api"
-            }
-        
-        elif data.get('url'):
-            # Direct URL response
-            download_url = data['url']
-            video_info = {
-                "title": data.get("title", "Video"),
-                "uploader": "Unknown",
                 "source": "unified_api"
             }
         
@@ -1082,11 +1134,26 @@ async def download_video(request: DownloadRequest):
         error_msg = str(e)
         print(f"❌ Primary download method failed: {error_msg}")
         
-        # Try unified API as primary fallback for all platforms
-        print(f"🔄 Primary method failed - attempting unified API fallback...")
+        # Check if this is a specific platform that might need specialized handling FIRST
+        is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
+        is_tiktok = "tiktok.com" in request.url
+        is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
+        
+        # For TikTok, try the specialized TikTok APIs FIRST (before unified API)
+        if is_tiktok:
+            print(f"🔄 TikTok detected - trying specialized TikTok APIs...")
+            try:
+                result = await download_with_tiktok_api(request.url, file_id)
+                print(f"✅ TikTok specialized API download successful!")
+                return result
+            except Exception as tiktok_error:
+                print(f"❌ TikTok specialized API failed: {str(tiktok_error)}")
+        
+        # Try unified API as fallback for non-TikTok platforms or if TikTok APIs failed
+        print(f"🔄 Attempting unified API fallback...")
         
         try:
-            # Try unified API as reliable fallback for all platforms
+            # Try unified API as reliable fallback
             result = await download_with_unified_api(request.url, file_id)
             print(f"✅ Unified API download successful!")
             return result
@@ -1094,30 +1161,15 @@ async def download_video(request: DownloadRequest):
         except Exception as unified_error:
             print(f"❌ Unified API fallback failed: {str(unified_error)}")
             
-            # Check if this is a specific platform that might need specialized handling
-            is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
-            is_tiktok = "tiktok.com" in request.url
-            is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
-            
-            # For YouTube with bot detection, try the old RapidAPI as final fallback
+            # For YouTube with bot detection, try additional methods
             if is_youtube and is_bot_error:
-                print(f"🔄 YouTube bot detection - trying specialized YouTube API...")
+                print(f"🔄 YouTube bot detection - trying additional methods...")
                 try:
                     # Note: This would need the old RapidAPI function, but we removed it
                     # For now, skip this and go to error message
                     raise Exception("YouTube specialized API not available")
                 except:
                     pass
-            
-            # For TikTok, try the specialized TikTok APIs as final fallback
-            elif is_tiktok:
-                print(f"🔄 TikTok detected - trying specialized TikTok APIs...")
-                try:
-                    result = await download_with_tiktok_api(request.url, file_id)
-                    print(f"✅ TikTok specialized API download successful!")
-                    return result
-                except Exception as tiktok_error:
-                    print(f"❌ TikTok specialized API also failed: {str(tiktok_error)}")
             
             # Provide helpful error message based on platform
             if is_youtube:
