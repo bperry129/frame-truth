@@ -582,12 +582,12 @@ async def download_with_cookies(url: str, file_id: str) -> dict:
 
 async def download_with_tiktok_api(url: str, file_id: str) -> dict:
     """
-    TikTok-specific download using Cobalt API (works great for TikTok)
+    TikTok-specific download using multiple fallback APIs
     """
     print(f"🔄 Attempting TikTok API download for: {url}")
     
+    # Method 1: Try Cobalt API instances
     try:
-        # Cobalt API for TikTok (very reliable)
         cobalt_instances = [
             "https://api.cobalt.tools",
             "https://cobalt.pub", 
@@ -601,14 +601,15 @@ async def download_with_tiktok_api(url: str, file_id: str) -> dict:
                 response = requests.post(f"{instance}/api/json", 
                     headers={
                         'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     },
                     json={
                         "url": url,
                         "filenamePattern": "basic",
                         "downloadMode": "auto"
                     },
-                    timeout=30
+                    timeout=15
                 )
                 
                 if response.status_code != 200:
@@ -635,7 +636,7 @@ async def download_with_tiktok_api(url: str, file_id: str) -> dict:
                 print(f"📥 Downloading TikTok video from: {download_url[:100]}...")
                 
                 # Download the video
-                video_response = requests.get(download_url, stream=True, timeout=120, headers={
+                video_response = requests.get(download_url, stream=True, timeout=60, headers={
                     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15'
                 })
                 video_response.raise_for_status()
@@ -665,11 +666,75 @@ async def download_with_tiktok_api(url: str, file_id: str) -> dict:
                 print(f"❌ {instance} failed: {str(e)}")
                 continue
         
-        raise Exception("All Cobalt instances failed")
+        print("❌ All Cobalt instances failed, trying alternative method...")
         
     except Exception as e:
-        print(f"❌ TikTok API download failed: {str(e)}")
-        raise
+        print(f"❌ Cobalt API method failed: {str(e)}")
+    
+    # Method 2: Try TikTok Downloader API (alternative)
+    try:
+        print(f"📤 Trying TikTok Downloader API...")
+        
+        # Extract TikTok video ID from URL
+        import re
+        video_id_match = re.search(r'/video/(\d+)', url)
+        if not video_id_match:
+            raise Exception("Could not extract TikTok video ID")
+        
+        video_id = video_id_match.group(1)
+        print(f"📹 TikTok Video ID: {video_id}")
+        
+        # Try TikTok downloader API
+        api_url = f"https://tikwm.com/api/?url={url}"
+        
+        response = requests.get(api_url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"📥 TikWM response: {json.dumps(data, indent=2)[:300]}")
+            
+            if data.get('code') == 0 and data.get('data'):
+                video_data = data['data']
+                download_url = video_data.get('play')
+                
+                if download_url:
+                    print(f"📥 Downloading from TikWM: {download_url[:100]}...")
+                    
+                    video_response = requests.get(download_url, stream=True, timeout=60, headers={
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15'
+                    })
+                    video_response.raise_for_status()
+                    
+                    # Save to file
+                    filename = f"{file_id}.mp4"
+                    filepath = os.path.join(DOWNLOAD_DIR, filename)
+                    
+                    with open(filepath, 'wb') as f:
+                        for chunk in video_response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    
+                    print(f"✅ TikWM download successful: {filename}")
+                    
+                    return {
+                        "filename": filename,
+                        "url": f"/videos/{filename}",
+                        "meta": {
+                            "title": video_data.get('title', 'TikTok Video'),
+                            "uploader": video_data.get('author', {}).get('unique_id', 'TikTok User'),
+                            "source": "tikwm_api"
+                        }
+                    }
+        
+        raise Exception("TikWM API failed or returned no download URL")
+        
+    except Exception as e:
+        print(f"❌ TikWM API failed: {str(e)}")
+    
+    # All methods failed
+    raise Exception("All TikTok download methods failed (Cobalt + TikWM)")
 
 async def download_with_y2mate(url: str, file_id: str) -> dict:
     """
