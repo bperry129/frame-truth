@@ -386,6 +386,7 @@ def get_ocr_reader():
 def analyze_text_stability(video_path, num_samples=12):
     """
     PHASE 1: Dedicated OCR analysis separate from Gemini
+    PERFORMANCE OPTIMIZED: Reduced processing for speed
     
     This is a critical missing signal - text is the strongest AI indicator.
     
@@ -410,24 +411,25 @@ def analyze_text_stability(video_path, num_samples=12):
             cap.release()
             return None
         
-        # Sample frames evenly
-        step = max(1, total_frames // num_samples)
+        # PERFORMANCE: Reduce OCR samples for speed
+        ocr_samples = min(4, num_samples // 2)  # Max 4 frames for OCR
+        step = max(1, total_frames // ocr_samples)
         
         frames = []
         count = 0
         extracted = 0
         
-        print(f"   Extracting frames for OCR analysis from {num_samples} frames...")
+        print(f"   Extracting frames for OCR analysis from {ocr_samples} frames (speed optimized)...")
         
         # Extract frames for OCR analysis
-        while cap.isOpened() and extracted < num_samples:
+        while cap.isOpened() and extracted < ocr_samples:
             ret, frame = cap.read()
             if not ret:
                 break
                 
             if count % step == 0:
-                # Higher resolution for better OCR accuracy
-                frame_resized = cv2.resize(frame, (512, 512))
+                # PERFORMANCE: Lower resolution for faster OCR
+                frame_resized = cv2.resize(frame, (384, 384))  # Was 512x512
                 frames.append(frame_resized)
                 extracted += 1
                     
@@ -435,7 +437,7 @@ def analyze_text_stability(video_path, num_samples=12):
         
         cap.release()
         
-        if len(frames) < 3:
+        if len(frames) < 2:  # Reduced minimum
             return None
         
         # Get OCR reader
@@ -453,7 +455,7 @@ def analyze_text_stability(video_path, num_samples=12):
                 frame_text_data = []
                 for (bbox, text, confidence) in results:
                     # Filter out low-confidence detections
-                    if confidence > 0.3:  # Minimum confidence threshold
+                    if confidence > 0.4:  # Higher threshold for speed (was 0.3)
                         cleaned_text = text.strip()
                         if len(cleaned_text) > 1:  # Ignore single characters
                             frame_text_data.append({
@@ -1606,23 +1608,23 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # Balanced frame count for good accuracy at reasonable cost
+        # PERFORMANCE OPTIMIZATION: Drastically reduce frame processing for speed
         if duration < 10:
-            num_frames = 15  # Very short clips
-            dinov2_samples = 12
-            print(f"📹 Very short video ({duration:.1f}s) - using 15 frames")
+            num_frames = 8   # Very short clips (was 15)
+            dinov2_samples = 6  # (was 12)
+            print(f"📹 Very short video ({duration:.1f}s) - using 8 frames (optimized for speed)")
         elif duration < 30:
-            num_frames = 20  # Short videos
-            dinov2_samples = 12
-            print(f"📹 Short video ({duration:.1f}s) - using 20 frames")
+            num_frames = 10  # Short videos (was 20)
+            dinov2_samples = 6  # (was 12)
+            print(f"📹 Short video ({duration:.1f}s) - using 10 frames (optimized for speed)")
         elif duration < 60:
-            num_frames = 25  # Medium videos
-            dinov2_samples = 15
-            print(f"📹 Medium video ({duration:.1f}s) - using 25 frames")
+            num_frames = 12  # Medium videos (was 25)
+            dinov2_samples = 8  # (was 15)
+            print(f"📹 Medium video ({duration:.1f}s) - using 12 frames (optimized for speed)")
         else:
-            num_frames = 30  # Longer videos
-            dinov2_samples = 15
-            print(f"📹 Long video ({duration:.1f}s) - using 30 frames")
+            num_frames = 15  # Longer videos (was 30)
+            dinov2_samples = 8  # (was 15)
+            print(f"📹 Long video ({duration:.1f}s) - using 15 frames (optimized for speed)")
         
         # 4. PHASE 1: Enhanced trajectory analysis with optical flow
         print(f"📐 Calculating visual trajectory metrics ({dinov2_samples} samples)...")
