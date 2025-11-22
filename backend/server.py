@@ -226,6 +226,133 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
             'score_increase': 0
         }
 
+def calculate_prnu_sensor_fingerprint(video_path, num_samples=16):
+    """
+    🚀 GAME-CHANGING DETECTION: Camera Sensor Fingerprint Consistency (PRNU)
+    
+    This is the closest thing to a "blood type" for real video.
+    
+    Real cameras have a fixed, physical sensor with tiny imperfections:
+    - Some pixels are slightly more/less sensitive than others
+    - Noise pattern is stable across frames (same sensor = same "grain fingerprint")
+    - Rolling shutter & lens distortion behave consistently
+    
+    AI videos usually:
+    - Don't have a physically consistent PRNU pattern
+    - Add synthetic noise that doesn't match real sensor statistics
+    - Show per-frame differences in "grain" that aren't tied to a real sensor
+    
+    Returns:
+    - prnu_mean_corr: Average correlation with global fingerprint
+    - prnu_std_corr: Standard deviation of correlations
+    - prnu_positive_ratio: Ratio of positive correlations
+    - prnu_consistency_score: Overall consistency metric
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        if total_frames <= 0:
+            cap.release()
+            return None
+        
+        # Sample frames evenly across video
+        step = max(1, total_frames // num_samples)
+        
+        frames = []
+        count = 0
+        extracted = 0
+        
+        print(f"   🔬 PRNU Analysis: extracting sensor fingerprint from {num_samples} frames...")
+        
+        # Extract frames for PRNU analysis
+        while cap.isOpened() and extracted < num_samples:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % step == 0:
+                # Convert to grayscale for noise analysis
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # Resize to manageable size for processing speed
+                gray_resized = cv2.resize(gray, (256, 256))
+                frames.append(gray_resized.astype(np.float32))
+                extracted += 1
+                    
+            count += 1
+        
+        cap.release()
+        
+        if len(frames) < 4:  # Need minimum frames for reliable fingerprint
+            return None
+        
+        # Step 1: Denoise each frame to isolate PRNU
+        residuals = []
+        for i, frame in enumerate(frames):
+            # Apply strong denoising to isolate sensor noise
+            # Using fastNlMeansDenoising as a starting point
+            denoised = cv2.fastNlMeansDenoising(frame.astype(np.uint8), None, 10, 7, 21)
+            denoised = denoised.astype(np.float32)
+            
+            # Calculate noise residual: original - denoised
+            residual = frame - denoised
+            
+            # Normalize residual
+            residual = residual / (np.std(residual) + 1e-6)
+            residuals.append(residual)
+        
+        # Step 2: Estimate global sensor fingerprint
+        # Average residuals across frames - sensor noise should reinforce, random noise cancels
+        global_fingerprint = np.mean(residuals, axis=0)
+        
+        # Normalize the global fingerprint
+        global_fingerprint = global_fingerprint / (np.std(global_fingerprint) + 1e-6)
+        
+        # Step 3: Measure per-frame correlation with global fingerprint
+        correlations = []
+        for residual in residuals:
+            # Flatten for correlation calculation
+            residual_flat = residual.flatten()
+            fingerprint_flat = global_fingerprint.flatten()
+            
+            # Calculate normalized cross-correlation
+            correlation = np.corrcoef(residual_flat, fingerprint_flat)[0, 1]
+            
+            # Handle NaN case
+            if np.isnan(correlation):
+                correlation = 0.0
+            
+            correlations.append(correlation)
+        
+        # Step 4: Calculate PRNU metrics
+        correlations = np.array(correlations)
+        
+        prnu_mean_corr = float(np.mean(correlations))
+        prnu_std_corr = float(np.std(correlations))
+        
+        # Count positive correlations (should be high for real cameras)
+        positive_threshold = 0.1  # Small positive threshold
+        prnu_positive_ratio = float(np.sum(correlations > positive_threshold) / len(correlations))
+        
+        # Calculate overall consistency score
+        # Real cameras: high mean, low std, high positive ratio
+        # AI videos: near-zero mean, higher std, low positive ratio
+        consistency_score = prnu_mean_corr * prnu_positive_ratio / (prnu_std_corr + 0.1)
+        prnu_consistency_score = float(max(0, min(1, consistency_score)))
+        
+        return {
+            'prnu_mean_corr': prnu_mean_corr,
+            'prnu_std_corr': prnu_std_corr,
+            'prnu_positive_ratio': prnu_positive_ratio,
+            'prnu_consistency_score': prnu_consistency_score,
+            'num_samples': len(frames),
+            'method': 'prnu_sensor_fingerprint'
+        }
+        
+    except Exception as e:
+        print(f"⚠️ PRNU sensor fingerprint analysis failed: {str(e)}")
+        return None
+
 def calculate_optical_flow_features(video_path, num_samples=12):
     """
     CPU-OPTIMIZED optical flow analysis for speed + accuracy balance
@@ -1135,151 +1262,6 @@ async def download_with_tiktok_api(url: str, file_id: str) -> dict:
     # All methods failed
     raise Exception("All TikTok download methods failed (Cobalt + TikWM)")
 
-async def download_with_y2mate(url: str, file_id: str) -> dict:
-    """
-    Fallback download method using Y2Mate API (for YouTube bot detection bypass)
-    FREE API - works reliably for YouTube downloads
-    """
-    print(f"🔄 Attempting Y2Mate API fallback for: {url}")
-    
-    try:
-        # Y2Mate API - Step 1: Analyze video
-        analyze_url = "https://www.y2mate.com/mates/analyzeV2/ajax"
-        
-        analyze_payload = {
-            "k_query": url,
-            "k_page": "home",
-            "hl": "en",
-            "q_auto": 0
-        }
-        
-        print(f"📤 Y2Mate analyze request for: {url}")
-        print(f"📤 Y2Mate API endpoint: {analyze_url}")
-        print(f"📤 Payload: {analyze_payload}")
-        
-        analyze_response = requests.post(
-            analyze_url,
-            data=analyze_payload,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            },
-            timeout=30
-        )
-        
-        print(f"📥 Y2Mate analyze response status: {analyze_response.status_code}")
-        print(f"📥 Y2Mate analyze response body: {analyze_response.text[:500]}")
-        
-        if analyze_response.status_code != 200:
-            raise Exception(f"Y2Mate analyze failed: {analyze_response.text[:200]}")
-        
-        analyze_data = analyze_response.json()
-        
-        if analyze_data.get("status") != "ok":
-            raise Exception(f"Y2Mate returned status: {analyze_data.get('status')}")
-        
-        # Extract video ID and links
-        vid = analyze_data.get("vid")
-        links = analyze_data.get("links", {})
-        
-        if not vid or not links:
-            raise Exception("No video data from Y2Mate")
-        
-        # Try to get 720p mp4, fallback to other qualities
-        video_formats = links.get("mp4", {})
-        
-        k_value = None
-        quality = None
-        
-        # Priority: 720p > 480p > 360p > any
-        for q in ["720", "480", "360"]:
-            if q in video_formats:
-                k_value = video_formats[q].get("k")
-                quality = q
-                break
-        
-        if not k_value:
-            # Get any available format
-            for q, data in video_formats.items():
-                k_value = data.get("k")
-                quality = q
-                break
-        
-        if not k_value:
-            raise Exception("No downloadable format found")
-        
-        print(f"📥 Selected quality: {quality}p")
-        
-        # Step 2: Get download link
-        convert_url = "https://www.y2mate.com/mates/convertV2/index"
-        
-        convert_payload = {
-            "vid": vid,
-            "k": k_value
-        }
-        
-        convert_response = requests.post(
-            convert_url,
-            data=convert_payload,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            },
-            timeout=30
-        )
-        
-        if convert_response.status_code != 200:
-            raise Exception(f"Y2Mate convert failed: {convert_response.text[:200]}")
-        
-        convert_data = convert_response.json()
-        
-        if convert_data.get("status") != "ok":
-            raise Exception(f"Y2Mate convert status: {convert_data.get('status')}")
-        
-        # Extract download URL from HTML response
-        import re
-        dlink_match = re.search(r'href="([^"]+)"', convert_data.get("dlink", ""))
-        
-        if not dlink_match:
-            raise Exception("No download URL found in response")
-        
-        download_url = dlink_match.group(1)
-        
-        print(f"📥 Downloading from Y2Mate: {download_url[:100]}...")
-        
-        # Download the video
-        video_response = requests.get(download_url, stream=True, timeout=120, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
-        video_response.raise_for_status()
-        
-        # Save to file
-        filename = f"{file_id}.mp4"
-        filepath = os.path.join(DOWNLOAD_DIR, filename)
-        
-        with open(filepath, 'wb') as f:
-            for chunk in video_response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        
-        print(f"✅ Y2Mate download successful: {filename} ({quality}p)")
-        
-        # Return metadata
-        return {
-            "filename": filename,
-            "url": f"/videos/{filename}",
-            "meta": {
-                "title": analyze_data.get("title", "Video"),
-                "uploader": "Unknown",
-                "source": "y2mate_api",
-                "quality": f"{quality}p"
-            }
-        }
-        
-    except Exception as e:
-        print(f"❌ Y2Mate API failed: {str(e)}")
-        raise
-
 @app.post("/api/download")
 async def download_video(request: DownloadRequest):
     try:
@@ -1505,16 +1487,6 @@ async def download_video(request: DownloadRequest):
         except Exception as unified_error:
             print(f"❌ Unified API fallback failed: {str(unified_error)}")
             
-            # For YouTube with bot detection, try additional methods
-            if is_youtube and is_bot_error:
-                print(f"🔄 YouTube bot detection - trying additional methods...")
-                try:
-                    # Note: This would need the old RapidAPI function, but we removed it
-                    # For now, skip this and go to error message
-                    raise Exception("YouTube specialized API not available")
-                except:
-                    pass
-            
             # Provide helpful error message based on platform
             if is_youtube:
                 helpful_msg = (
@@ -1570,8 +1542,6 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     # 1. Check Rate Limit
     client_ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0]
     print(f"🔍 Client IP detected: {client_ip}")
-    print(f"🔍 Request client host: {request.client.host}")
-    print(f"🔍 X-Forwarded-For header: {request.headers.get('x-forwarded-for')}")
     
     if not check_rate_limit(client_ip):
          raise HTTPException(status_code=429, detail="Daily submission limit reached (5/5). Contact admin@frametruth.com for access.")
@@ -1603,7 +1573,11 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             dinov2_samples = 4  # (was 8)
             print(f"📹 Long video ({duration:.1f}s) - using 8 frames (extreme speed optimization)")
         
-        # 4. CPU-OPTIMIZED ANALYSIS: Re-enable advanced components with speed optimizations
+        # 4. 🚀 GAME-CHANGING ADDITION: PRNU Sensor Fingerprint Analysis
+        print(f"🔬 PRNU Sensor Fingerprint Analysis: extracting camera 'DNA' from video...")
+        prnu_metrics = calculate_prnu_sensor_fingerprint(filepath, num_samples=max(8, dinov2_samples*2))
+        
+        # 5. CPU-OPTIMIZED ANALYSIS: Re-enable advanced components with speed optimizations
         print(f"🔧 CPU-OPTIMIZED MODE: Re-enabling advanced analysis with speed optimizations")
         
         # Re-enable with aggressive optimizations for speed
@@ -1618,9 +1592,60 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         
         print(f"🔧 Advanced analysis re-enabled with CPU optimizations for accuracy + speed balance")
         
-        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False}
+        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False, 'has_prnu_anomalies': False}
         
-        # Analyze trajectory curvature (existing logic)
+        # 6. 🚀 ANALYZE PRNU SENSOR FINGERPRINT (GAME-CHANGING!)
+        if prnu_metrics:
+            prnu_mean_corr = prnu_metrics['prnu_mean_corr']
+            prnu_std_corr = prnu_metrics['prnu_std_corr']
+            prnu_positive_ratio = prnu_metrics['prnu_positive_ratio']
+            prnu_consistency_score = prnu_metrics['prnu_consistency_score']
+            
+            # Detect PRNU anomalies that indicate AI generation
+            prnu_anomaly_score = 0
+            prnu_reasons = []
+            
+            # 1. Low mean correlation (AI lacks consistent sensor fingerprint)
+            if prnu_mean_corr < 0.15:  # Real cameras typically > 0.2
+                prnu_anomaly_score += 50
+                prnu_reasons.append(f"Low sensor fingerprint correlation ({prnu_mean_corr:.3f})")
+                print(f"🚨 LOW SENSOR FINGERPRINT CORRELATION: {prnu_mean_corr:.3f} (AI lacks consistent camera sensor pattern)")
+            
+            # 2. High standard deviation (AI has inconsistent noise patterns)
+            if prnu_std_corr > 0.3:  # Real cameras typically < 0.2
+                prnu_anomaly_score += 40
+                prnu_reasons.append(f"High sensor noise inconsistency ({prnu_std_corr:.3f})")
+                print(f"🚨 HIGH SENSOR NOISE INCONSISTENCY: {prnu_std_corr:.3f} (AI has unstable noise patterns)")
+            
+            # 3. Low positive ratio (AI correlations often near zero or negative)
+            if prnu_positive_ratio < 0.6:  # Real cameras typically > 0.7
+                prnu_anomaly_score += 45
+                prnu_reasons.append(f"Low positive correlation ratio ({prnu_positive_ratio:.3f})")
+                print(f"🚨 LOW POSITIVE CORRELATION RATIO: {prnu_positive_ratio:.3f} (AI lacks stable sensor signature)")
+            
+            # 4. Low overall consistency score
+            if prnu_consistency_score < 0.3:  # Real cameras typically > 0.5
+                prnu_anomaly_score += 35
+                prnu_reasons.append(f"Low overall sensor consistency ({prnu_consistency_score:.3f})")
+                print(f"🚨 LOW SENSOR CONSISTENCY: {prnu_consistency_score:.3f} (AI lacks physical sensor characteristics)")
+            
+            # Apply PRNU boost if anomalies detected
+            if prnu_anomaly_score > 40:  # Significant PRNU anomalies
+                additional_score = min(70, prnu_anomaly_score)  # PRNU is extremely reliable
+                additional_confidence = min(40, prnu_anomaly_score // 2)
+                
+                trajectory_boost['score_increase'] += additional_score
+                trajectory_boost['confidence_boost'] += additional_confidence
+                trajectory_boost['has_prnu_anomalies'] = True
+                
+                print(f"🔬 PRNU SENSOR ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
+                print(f"   Anomalies: {', '.join(prnu_reasons)}")
+            else:
+                print(f"✓ Normal sensor fingerprint patterns: mean_corr={prnu_mean_corr:.3f}, consistency={prnu_consistency_score:.3f}")
+        else:
+            print(f"⚠️ PRNU analysis failed - sensor fingerprint analysis unavailable")
+        
+        # 7. Analyze trajectory curvature (existing logic)
         if trajectory_metrics:
             mean_curv = trajectory_metrics['mean_curvature']
             curv_var = trajectory_metrics['curvature_variance']
@@ -1631,33 +1656,29 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             # But don't completely override visual analysis - work together
             
             if mean_curv > 130:  # EXTREMELY high - very strong AI indicator
-                trajectory_boost['score_increase'] = min(40, int((mean_curv - 130) * 2))  # Up to +40
-                trajectory_boost['confidence_boost'] = min(25, int((mean_curv - 130) * 1))  # Up to +25
+                trajectory_boost['score_increase'] += min(40, int((mean_curv - 130) * 2))  # Up to +40
+                trajectory_boost['confidence_boost'] += min(25, int((mean_curv - 130) * 1))  # Up to +25
                 trajectory_boost['has_high_curvature'] = True
                 print(f"🚨 EXTREMELY HIGH VISUAL CURVATURE: {mean_curv:.1f}° (very strong AI indicator)")
-                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             elif mean_curv > 110:  # High curvature - strong AI indicator
-                trajectory_boost['score_increase'] = min(30, int((mean_curv - 110) * 1.5))  # Up to +30
-                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 110) * 1))  # Up to +20
+                trajectory_boost['score_increase'] += min(30, int((mean_curv - 110) * 1.5))  # Up to +30
+                trajectory_boost['confidence_boost'] += min(20, int((mean_curv - 110) * 1))  # Up to +20
                 trajectory_boost['has_high_curvature'] = True
                 print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (strong AI indicator - modern AI often shows this pattern)")
-                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             elif mean_curv > 90:  # Moderate-high curvature - possible AI indicator
-                trajectory_boost['score_increase'] = min(20, int((mean_curv - 90) * 1))  # Up to +20
-                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 90) * 0.75))  # Up to +15
+                trajectory_boost['score_increase'] += min(20, int((mean_curv - 90) * 1))  # Up to +20
+                trajectory_boost['confidence_boost'] += min(15, int((mean_curv - 90) * 0.75))  # Up to +15
                 trajectory_boost['has_high_curvature'] = True
                 print(f"⚠️ MODERATE-HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
-                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             elif mean_curv > 70:  # Moderate curvature - minor AI indicator
-                trajectory_boost['score_increase'] = min(10, int((mean_curv - 70) * 0.5))  # Up to +10
-                trajectory_boost['confidence_boost'] = min(5, int((mean_curv - 70) * 0.25))  # Up to +5
+                trajectory_boost['score_increase'] += min(10, int((mean_curv - 70) * 0.5))  # Up to +10
+                trajectory_boost['confidence_boost'] += min(5, int((mean_curv - 70) * 0.25))  # Up to +5
                 trajectory_boost['has_high_curvature'] = True
                 print(f"ℹ️ MODERATE VISUAL CURVATURE: {mean_curv:.1f}° (could be AI or dynamic camera movement)")
-                print(f"   Minor score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             else:
                 print(f"✓ Normal visual curvature: {mean_curv:.1f}° (typical for real video)")
         
-        # PHASE 1: Analyze optical flow anomalies (NEW!)
+        # 8. Analyze optical flow anomalies
         if optical_flow_metrics:
             flow_mean = optical_flow_metrics['flow_global_mean']
             flow_std = optical_flow_metrics['flow_global_std']
@@ -1707,7 +1728,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             else:
                 print(f"✓ Normal optical flow patterns: jitter={flow_jitter:.2f}, bg/fg={bg_fg_ratio:.2f}")
         
-        # PHASE 1: Analyze OCR text stability anomalies (NEW!)
+        # 9. Analyze OCR text stability anomalies
         if ocr_metrics and ocr_metrics['has_text']:
             char_error_rate = ocr_metrics['ocr_char_error_rate']
             frame_stability = ocr_metrics['ocr_frame_stability_score']
@@ -1760,7 +1781,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         else:
             print(f"⚠️ OCR analysis failed - text analysis unavailable")
         
-        # 5. Scan metadata for AI keywords (if URL provided)
+        # 10. Scan metadata for AI keywords (if URL provided)
         metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
         if data.original_url and data.original_url.strip():
             print(f"🔍 Scanning metadata for AI keywords in URL: {data.original_url}")
@@ -1769,14 +1790,21 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                 print(f"⚠️ AI KEYWORDS DETECTED: {metadata_scan['keywords_found']}")
                 print(f"   Score boost: +{metadata_scan['score_increase']}, Confidence boost: +{metadata_scan['confidence_boost']}")
         
-        # 6. Extract Frames
+        # 11. Extract Frames
         frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 6. PHASE 1: Restructured Gemini prompt with numeric inputs
-        # Build structured numeric context from our analysis
+        # 12. 🚀 ENHANCED GEMINI PROMPT WITH PRNU CONTEXT
+        # Build structured numeric context from our analysis INCLUDING PRNU
         numeric_context = {
+            "prnu_sensor_fingerprint": {
+                "prnu_mean_corr": prnu_metrics['prnu_mean_corr'] if prnu_metrics else 0.0,
+                "prnu_std_corr": prnu_metrics['prnu_std_corr'] if prnu_metrics else 0.0,
+                "prnu_positive_ratio": prnu_metrics['prnu_positive_ratio'] if prnu_metrics else 0.0,
+                "prnu_consistency_score": prnu_metrics['prnu_consistency_score'] if prnu_metrics else 0.0,
+                "method": prnu_metrics['method'] if prnu_metrics else "none"
+            },
             "trajectory_analysis": {
                 "mean_curvature": trajectory_metrics['mean_curvature'] if trajectory_metrics else 0.0,
                 "curvature_variance": trajectory_metrics['curvature_variance'] if trajectory_metrics else 0.0,
@@ -1813,7 +1841,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             }
         }
         
-        # Create enhanced prompt with numeric context
+        # Create enhanced prompt with PRNU context
         prompt = f"""
     You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
     Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
@@ -1822,6 +1850,12 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     {json.dumps(numeric_context, indent=2)}
 
     📋 INTERPRETATION GUIDE:
+    
+    **🚀 PRNU Sensor Fingerprint Analysis (MOST RELIABLE SIGNAL):**
+    - prnu_mean_corr < 0.15: Strong AI indicator (lacks consistent sensor fingerprint)
+    - prnu_std_corr > 0.3: High noise inconsistency (AI artifact)
+    - prnu_positive_ratio < 0.6: Low correlation stability (AI lacks sensor signature)
+    - prnu_consistency_score < 0.3: Overall sensor inconsistency (AI lacks physical sensor)
     
     **Trajectory Analysis:**
     - mean_curvature > 110°: Strong AI indicator (irregular frame transitions)
@@ -1847,7 +1881,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     
     🔍 ANALYSIS FRAMEWORK - Use numeric context as PRIMARY evidence, visual frames for CONFIRMATION:
 
-    **CRITICAL INSTRUCTION: The numeric analysis above provides objective measurements. Use these as your primary decision-making foundation, then examine the visual frames to confirm and explain the patterns detected by the algorithms.**
+    **CRITICAL INSTRUCTION: The PRNU sensor fingerprint analysis is the most reliable technical signal. If it shows strong AI indicators (low correlations, high inconsistency), this should heavily influence your decision. Use the visual frames to confirm and explain the patterns detected by the algorithms.**
     
     🔍 VISUAL ANALYSIS FRAMEWORK - Examine these sequential frames to confirm numeric findings:
 
@@ -1964,58 +1998,26 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
        - Any imperfection in text is a RED FLAG
        - Be skeptical, not generous
 
-    7. 🚨 AI-SPECIFIC ARTIFACT CHECKLIST (Modern Generators):
-       
-       **Sora Tells:**
-       - Dreamlike, overly cinematic composition (too "perfect" framing)
-       - Slight ethereal or surreal quality to lighting
-       - Background elements that are impressively detailed but subtly inconsistent
-       - Smooth but slightly "floaty" motion, lacks weight
-       - **Text issues**: Signs with garbled letters, morphing words
-       
-       **Runway Gen-3 Tells:**
-       - Corporate/commercial aesthetic (clean, polished, but sterile)
-       - Very smooth motion that can feel "computer-generated"
-       - Edges can be too sharp or too soft (not naturally in-between)
-       - Lighting often perfect but lacks natural imperfections
-       - **Text issues**: Clean-looking but nonsensical text
-       
-       **Pika/Kling Tells:**
-       - More obvious physics violations (exaggerated movements)
-       - Temporal glitches more common (brief warping or stuttering)
-       - Lower-fidelity artifacts in complex scenes
-       - **Text issues**: Very garbled, often completely illegible
-       
-       **Generic AI Tells to Watch For:**
-       - Lack of camera shake or imperfect framing
-       - Perfect lighting that doesn't match environment
-       - Faces that are too symmetrical or have "uncanny valley" feel
-       - Hair that moves unnaturally or as a single mass
-       - Fabric/clothing with unnatural physics (too stiff or too fluid)
-       - Repetitive or patterned elements in organic settings (trees, crowds)
-       - Missing or incorrect shadows/reflections
-       - Depth inconsistencies (foreground/background relationship wrong)
-       - **TEXT PROBLEMS** (most reliable tell)
-
     📊 SCORING METHODOLOGY (Evidence-Based):
     
-    **curvatureScore (0-100)**: Based on motion trajectory analysis
-    - 0-30: Natural camera motion with realistic object trajectories
-    - 31-60: Some irregular patterns that could be either natural or synthetic
-    - 61-100: Clear unnatural motion patterns inconsistent with physics
+    **curvatureScore (0-100)**: Based on combined technical analysis
+    - 0-30: Strong evidence of real camera with consistent sensor fingerprint
+    - 31-60: Mixed signals that could be either natural or synthetic
+    - 61-100: Clear technical evidence of AI generation (sensor inconsistency, motion artifacts, text issues)
     
     **distanceScore (0-100)**: Based on spatial consistency
     - Measure consistency of object positions and spatial relationships
     
     **confidence (0-100)**: Your certainty in the classification
     - Base this on the STRENGTH and QUANTITY of evidence observed
+    - PRNU sensor fingerprint analysis should heavily influence confidence
     - Low confidence (0-40): Ambiguous or limited evidence
     - Medium confidence (41-70): Some clear indicators present
     - High confidence (71-100): Multiple strong, unambiguous indicators
     
     **isAi determination**: 
-    - Set to TRUE only if you observe clear, unambiguous technical evidence of synthetic generation
-    - Set to FALSE if the video shows natural camera characteristics and physics
+    - Set to TRUE if PRNU analysis shows strong AI indicators OR multiple other strong signals
+    - Set to FALSE if PRNU shows consistent sensor fingerprint AND other signals support real camera
     - Consider the TOTALITY of evidence, not individual anomalies
     - Real-world videos can have compression artifacts, editing, and imperfections
 
@@ -2102,27 +2104,35 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 7. Apply enhanced trajectory and optical flow score adjustments
-        if trajectory_boost['has_high_curvature'] or trajectory_boost['has_flow_anomalies']:
+        # 13. Apply enhanced trajectory, optical flow, OCR, and PRNU score adjustments
+        if (trajectory_boost['has_high_curvature'] or trajectory_boost['has_flow_anomalies'] or 
+            trajectory_boost['has_text_anomalies'] or trajectory_boost['has_prnu_anomalies']):
             original_curvature = analysis_result.get('curvatureScore', 0)
             original_confidence = analysis_result.get('confidence', 0)
             
-            # Boost scores based on trajectory curvature and optical flow anomalies
+            # Boost scores based on all detected anomalies
             analysis_result['curvatureScore'] = min(100, original_curvature + trajectory_boost['score_increase'])
             analysis_result['confidence'] = min(100, original_confidence + trajectory_boost['confidence_boost'])
             
-            # Add trajectory info to reasoning
+            # Add detailed reasoning for each type of anomaly detected
             if trajectory_metrics and trajectory_boost['has_high_curvature']:
                 analysis_result['reasoning'].insert(0, f"📐 ReStraV Analysis: High temporal trajectory curvature detected ({trajectory_metrics['mean_curvature']:.1f}°), indicating irregular frame-to-frame transitions characteristic of AI-generated content")
             
-            # Add optical flow info to reasoning
             if optical_flow_metrics and trajectory_boost['has_flow_anomalies']:
                 flow_details = f"jitter={optical_flow_metrics['temporal_flow_jitter_index']:.2f}, bg/fg_ratio={optical_flow_metrics['background_vs_foreground_ratio']:.2f}"
                 analysis_result['reasoning'].insert(0, f"🌊 Optical Flow Analysis: Motion inconsistencies detected ({flow_details}), indicating temporal artifacts characteristic of AI-generated video")
             
+            if ocr_metrics and trajectory_boost['has_text_anomalies']:
+                text_details = f"stability={ocr_metrics['ocr_frame_stability_score']:.2f}, mutation_rate={ocr_metrics['ocr_text_mutation_rate']:.2f}"
+                analysis_result['reasoning'].insert(0, f"📝 OCR Text Analysis: Text anomalies detected ({text_details}), indicating frame-to-frame text inconsistencies characteristic of AI-generated content")
+            
+            if prnu_metrics and trajectory_boost['has_prnu_anomalies']:
+                prnu_details = f"mean_corr={prnu_metrics['prnu_mean_corr']:.3f}, consistency={prnu_metrics['prnu_consistency_score']:.3f}"
+                analysis_result['reasoning'].insert(0, f"🔬 PRNU Sensor Fingerprint: Camera sensor inconsistencies detected ({prnu_details}), indicating lack of physical camera sensor characteristics typical of AI-generated content")
+            
             print(f"📊 Enhanced analysis adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
         
-        # 8. Apply metadata-based score adjustments
+        # 14. Apply metadata-based score adjustments
         if metadata_scan['has_ai_keywords']:
             original_curvature = analysis_result.get('curvatureScore', 0)
             original_confidence = analysis_result.get('confidence', 0)
@@ -2141,15 +2151,12 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             
             print(f"📊 Metadata-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
         
-        # 9. REMOVED: Force AI override - let visual analysis be the primary decision maker
-        # Trajectory analysis now only provides supporting evidence
-        
-        # 10. Final AI determination based on combined signals (balanced approach)
-        # Use trajectory analysis as important supporting evidence for AI detection
+        # 15. Final AI determination based on combined signals (balanced approach)
+        # Use all analysis as important supporting evidence for AI detection
         if analysis_result.get('curvatureScore', 0) >= 60:  # Lowered to 60 for better AI detection
             analysis_result['isAi'] = True
 
-        # 11. Save Submission AUTOMATICALLY
+        # 16. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now().isoformat()
         
