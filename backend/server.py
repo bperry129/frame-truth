@@ -769,86 +769,92 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
     """
     Unified social media downloader using RapidAPI "Download All in One Elite"
     Supports YouTube, TikTok, Instagram, Twitter, Facebook, and more
+    
+    API Format:
+    {
+        url: '',
+        source: '',
+        author: '',
+        title: '',
+        thumbnail: '',
+        duration: '',
+        medias: [
+            {
+                url: '',
+                quality: '',
+                extension: '',
+                type: '',
+            }
+        ]
+    }
     """
     print(f"🔄 Attempting unified API download for: {url}")
     
     try:
-        # Based on RapidAPI docs, try both POST and GET endpoints
+        # Correct headers for Download All in One Elite API
         headers = {
-            'x-rapidapi-host': 'download-all-in-one-elite.p.rapidapi.com',
-            'x-rapidapi-key': RAPIDAPI_KEY or '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475'
+            'X-RapidAPI-Host': 'download-all-in-one-elite.p.rapidapi.com',
+            'X-RapidAPI-Key': RAPIDAPI_KEY or '135d1d8e94msh773cfcb7bd35969p1fada7jsn4743820f5475',
+            'Content-Type': 'application/json'
         }
         
-        # Try POST method first (Download URL (p))
-        try:
-            print(f"📤 Trying POST method...")
-            post_headers = {**headers, 'Content-Type': 'application/json'}
-            post_payload = {"url": url}
-            
-            response = requests.post(
-                "https://download-all-in-one-elite.p.rapidapi.com/",
-                headers=post_headers,
-                json=post_payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                print(f"✅ POST method successful")
-            else:
-                print(f"❌ POST method failed with status {response.status_code}: {response.text[:200]}")
-                raise Exception(f"POST method failed: {response.status_code}")
-                
-        except Exception as post_error:
-            print(f"❌ POST method failed: {str(post_error)}")
-            
-            # Try GET method as fallback (Download URL (g))
-            try:
-                print(f"📤 Trying GET method as fallback...")
-                response = requests.get(
-                    "https://download-all-in-one-elite.p.rapidapi.com/",
-                    headers=headers,
-                    params={"url": url},
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
-                    print(f"✅ GET method successful")
-                else:
-                    print(f"❌ GET method failed with status {response.status_code}: {response.text[:200]}")
-                    raise Exception(f"Both POST and GET methods failed")
-                    
-            except Exception as get_error:
-                print(f"❌ GET method also failed: {str(get_error)}")
-                raise Exception(f"All unified API methods failed. POST: {post_error}, GET: {get_error}")
+        # Correct API endpoint and payload format
+        api_endpoint = "https://download-all-in-one-elite.p.rapidapi.com/download"
+        payload = {
+            "url": url
+        }
+        
+        print(f"📤 Making request to: {api_endpoint}")
+        print(f"📤 Payload: {payload}")
+        print(f"📤 Headers: {dict(headers)}")
+        
+        response = requests.post(
+            api_endpoint,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        print(f"📥 Response status: {response.status_code}")
+        print(f"📥 Response headers: {dict(response.headers)}")
         
         if response.status_code != 200:
-            raise Exception(f"Unified API failed: {response.status_code} - {response.text[:200]}")
+            print(f"❌ API failed with status {response.status_code}")
+            print(f"❌ Response text: {response.text[:500]}")
+            raise Exception(f"API returned status {response.status_code}: {response.text[:200]}")
         
         data = response.json()
         print(f"📥 Unified API response: {json.dumps(data, indent=2)[:500]}")
         
-        # Extract download URL from response based on API docs format
+        # Extract download URL from the documented response format
         download_url = None
         video_info = {}
         
         # Handle the documented API response format
         if data.get('medias') and isinstance(data['medias'], list) and len(data['medias']) > 0:
-            # Get the first media item (or find best quality)
-            media_item = data['medias'][0]
+            # Find the best video quality
+            video_media = None
             for media in data['medias']:
-                # Prefer video type and higher quality
                 if media.get('type') == 'video':
-                    media_item = media
-                    break
+                    video_media = media
+                    # Prefer higher quality if available
+                    if 'quality' in media and ('720' in str(media['quality']) or 'high' in str(media['quality']).lower()):
+                        break
             
-            download_url = media_item.get('url')
+            if not video_media:
+                # If no video type found, use first media item
+                video_media = data['medias'][0]
+            
+            download_url = video_media.get('url')
             
             # Extract metadata from main response
             video_info = {
                 "title": data.get("title", "Video"),
                 "uploader": data.get("author", "Unknown"),
                 "duration": data.get("duration"),
-                "source": "unified_api"
+                "source": data.get("source", "unified_api"),
+                "quality": video_media.get("quality", "unknown"),
+                "extension": video_media.get("extension", "mp4")
             }
             
         elif data.get('url'):
@@ -857,56 +863,31 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
             video_info = {
                 "title": data.get("title", "Video"),
                 "uploader": data.get("author", "Unknown"),
-                "source": "unified_api"
-            }
-        
-        # Legacy format handling (for backward compatibility)
-        elif data.get('success') and data.get('data'):
-            video_data = data['data']
-            
-            # Try to get the best quality download URL
-            if 'download_url' in video_data:
-                download_url = video_data['download_url']
-            elif 'url' in video_data:
-                download_url = video_data['url']
-            elif 'video_url' in video_data:
-                download_url = video_data['video_url']
-            elif 'links' in video_data and video_data['links']:
-                # If multiple quality options, pick the first one
-                links = video_data['links']
-                if isinstance(links, list) and len(links) > 0:
-                    download_url = links[0].get('url') or links[0].get('download_url')
-                elif isinstance(links, dict):
-                    # Try common quality keys
-                    for quality in ['720p', '480p', '360p', 'high', 'medium', 'low']:
-                        if quality in links:
-                            download_url = links[quality].get('url')
-                            break
-            
-            # Extract metadata
-            video_info = {
-                "title": video_data.get("title", "Video"),
-                "uploader": video_data.get("author", video_data.get("uploader", "Unknown")),
-                "duration": video_data.get("duration"),
-                "view_count": video_data.get("view_count"),
-                "source": "unified_api"
+                "source": data.get("source", "unified_api")
             }
         
         if not download_url:
-            raise Exception(f"No download URL found in API response. Response keys: {list(data.keys())}")
+            raise Exception(f"No download URL found in API response. Response structure: {list(data.keys())}")
         
         print(f"📥 Downloading from unified API: {download_url[:100]}...")
         
-        # Download the video
+        # Download the video with proper headers
         video_response = requests.get(download_url, stream=True, timeout=120, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': 'https://download-all-in-one-elite.p.rapidapi.com/',
+            'Accept': '*/*'
         })
         video_response.raise_for_status()
         
-        # Save to file
-        filename = f"{file_id}.mp4"
+        # Determine file extension
+        extension = video_info.get('extension', 'mp4')
+        if not extension.startswith('.'):
+            extension = f".{extension}"
+        
+        filename = f"{file_id}{extension}"
         filepath = os.path.join(DOWNLOAD_DIR, filename)
         
+        # Save video file
         with open(filepath, 'wb') as f:
             for chunk in video_response.iter_content(chunk_size=8192):
                 if chunk:
