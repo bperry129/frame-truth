@@ -1273,28 +1273,33 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             curv_var = trajectory_metrics['curvature_variance']
             mean_dist = trajectory_metrics['mean_distance']
             
-            # BALANCED: Trajectory analysis should supplement, not override visual analysis
-            # Real videos can have high curvature due to camera movement, editing, etc.
-            # Only use trajectory as supporting evidence, never as definitive proof
+            # BALANCED: Trajectory analysis provides important supporting evidence
+            # High curvature (>100°) is a significant AI indicator that should influence the decision
+            # But don't completely override visual analysis - work together
             
-            if mean_curv > 140:  # EXTREMELY high - very rare, even for AI
-                trajectory_boost['score_increase'] = min(25, int((mean_curv - 140) * 1))  # Up to +25 (reduced)
-                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 140) * 0.5))  # Up to +15 (reduced)
+            if mean_curv > 130:  # EXTREMELY high - very strong AI indicator
+                trajectory_boost['score_increase'] = min(40, int((mean_curv - 130) * 2))  # Up to +40
+                trajectory_boost['confidence_boost'] = min(25, int((mean_curv - 130) * 1))  # Up to +25
                 trajectory_boost['has_high_curvature'] = True
-                # REMOVED: force_ai override - let visual analysis decide
-                print(f"⚠️ VERY HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator, but not definitive)")
+                print(f"🚨 EXTREMELY HIGH VISUAL CURVATURE: {mean_curv:.1f}° (very strong AI indicator)")
                 print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
-            elif mean_curv > 120:  # High curvature - could be real video with camera movement
-                trajectory_boost['score_increase'] = min(15, int((mean_curv - 120) * 0.75))  # Up to +15
-                trajectory_boost['confidence_boost'] = min(10, int((mean_curv - 120) * 0.5))  # Up to +10
+            elif mean_curv > 110:  # High curvature - strong AI indicator
+                trajectory_boost['score_increase'] = min(30, int((mean_curv - 110) * 1.5))  # Up to +30
+                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 110) * 1))  # Up to +20
                 trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (could indicate AI, but also normal for dynamic camera movement)")
+                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (strong AI indicator - modern AI often shows this pattern)")
                 print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
-            elif mean_curv > 100:  # Moderate curvature - common in real videos
-                trajectory_boost['score_increase'] = min(10, int((mean_curv - 100) * 0.5))  # Up to +10
-                trajectory_boost['confidence_boost'] = min(5, int((mean_curv - 100) * 0.25))  # Up to +5
+            elif mean_curv > 90:  # Moderate-high curvature - possible AI indicator
+                trajectory_boost['score_increase'] = min(20, int((mean_curv - 90) * 1))  # Up to +20
+                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 90) * 0.75))  # Up to +15
                 trajectory_boost['has_high_curvature'] = True
-                print(f"ℹ️ MODERATE VISUAL CURVATURE: {mean_curv:.1f}° (normal range for real videos with movement)")
+                print(f"⚠️ MODERATE-HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
+                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
+            elif mean_curv > 70:  # Moderate curvature - minor AI indicator
+                trajectory_boost['score_increase'] = min(10, int((mean_curv - 70) * 0.5))  # Up to +10
+                trajectory_boost['confidence_boost'] = min(5, int((mean_curv - 70) * 0.25))  # Up to +5
+                trajectory_boost['has_high_curvature'] = True
+                print(f"ℹ️ MODERATE VISUAL CURVATURE: {mean_curv:.1f}° (could be AI or dynamic camera movement)")
                 print(f"   Minor score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             else:
                 print(f"✓ Normal visual curvature: {mean_curv:.1f}° (typical for real video)")
@@ -1609,8 +1614,8 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         # Trajectory analysis now only provides supporting evidence
         
         # 10. Final AI determination based on combined signals (balanced approach)
-        # Trust the visual analysis more, only use trajectory as supporting evidence
-        if analysis_result.get('curvatureScore', 0) >= 70:  # Raised back to 70 for more conservative approach
+        # Use trajectory analysis as important supporting evidence for AI detection
+        if analysis_result.get('curvatureScore', 0) >= 60:  # Lowered to 60 for better AI detection
             analysis_result['isAi'] = True
 
         # 11. Save Submission AUTOMATICALLY
