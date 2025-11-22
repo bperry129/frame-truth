@@ -798,8 +798,8 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
             'Content-Type': 'application/json'
         }
         
-        # Correct API endpoint and payload format
-        api_endpoint = "https://download-all-in-one-elite.p.rapidapi.com/download"
+        # Correct API endpoint and payload format (use root endpoint)
+        api_endpoint = "https://download-all-in-one-elite.p.rapidapi.com/"
         payload = {
             "url": url
         }
