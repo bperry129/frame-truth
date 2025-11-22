@@ -410,8 +410,8 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
     print(f"🔄 Attempting unified API download for: {url}")
     
     try:
-        # Use the Download All in One Elite API
-        api_url = "https://download-all-in-one-elite.p.rapidapi.com/download"
+        # Use the Download All in One Elite API (correct endpoint)
+        api_url = "https://download-all-in-one-elite.p.rapidapi.com/api/download"
         
         headers = {
             'x-rapidapi-host': 'download-all-in-one-elite.p.rapidapi.com',
