@@ -228,7 +228,7 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
 
 def calculate_optical_flow_features(video_path, num_samples=12):
     """
-    PHASE 1: Extract temporal motion inconsistency features using OpenCV optical flow
+    CPU-OPTIMIZED optical flow analysis for speed + accuracy balance
     
     This is a major missing signal that can boost accuracy by 8-12%.
     
@@ -253,24 +253,25 @@ def calculate_optical_flow_features(video_path, num_samples=12):
             cap.release()
             return None
         
-        # Sample frames evenly
-        step = max(1, total_frames // num_samples)
+        # CPU OPTIMIZATION: Minimal samples for speed
+        flow_samples = max(2, min(3, num_samples // 2))  # Max 3 frames (was 12)
+        step = max(1, total_frames // flow_samples)
         
         frames = []
         count = 0
         extracted = 0
         
-        print(f"   Extracting optical flow features from {num_samples} frames...")
+        print(f"   CPU-optimized optical flow: analyzing {flow_samples} frames (minimal for speed)...")
         
         # Extract frames for optical flow analysis
-        while cap.isOpened() and extracted < num_samples:
+        while cap.isOpened() and extracted < flow_samples:
             ret, frame = cap.read()
             if not ret:
                 break
                 
             if count % step == 0:
-                # Resize for faster processing but keep enough detail for flow
-                frame_resized = cv2.resize(frame, (256, 256))
+                # CPU OPTIMIZATION: Smaller resolution for faster processing
+                frame_resized = cv2.resize(frame, (128, 128))  # Was 256x256
                 gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
                 frames.append(gray)
                 extracted += 1
@@ -279,7 +280,7 @@ def calculate_optical_flow_features(video_path, num_samples=12):
         
         cap.release()
         
-        if len(frames) < 3:
+        if len(frames) < 2:  # Only need 2 frames minimum
             return None
         
         # Calculate optical flow between consecutive frames
@@ -385,8 +386,7 @@ def get_ocr_reader():
 
 def analyze_text_stability(video_path, num_samples=12):
     """
-    PHASE 1: Dedicated OCR analysis separate from Gemini
-    PERFORMANCE OPTIMIZED: Reduced processing for speed
+    CPU-OPTIMIZED OCR analysis for speed + accuracy balance
     
     This is a critical missing signal - text is the strongest AI indicator.
     
@@ -411,15 +411,15 @@ def analyze_text_stability(video_path, num_samples=12):
             cap.release()
             return None
         
-        # PERFORMANCE: Reduce OCR samples for speed
-        ocr_samples = min(4, num_samples // 2)  # Max 4 frames for OCR
+        # CPU OPTIMIZATION: Minimal OCR samples for speed
+        ocr_samples = max(1, min(2, num_samples // 3))  # Max 2 frames for OCR (was 4)
         step = max(1, total_frames // ocr_samples)
         
         frames = []
         count = 0
         extracted = 0
         
-        print(f"   Extracting frames for OCR analysis from {ocr_samples} frames (speed optimized)...")
+        print(f"   CPU-optimized OCR: analyzing {ocr_samples} frames (minimal for speed)...")
         
         # Extract frames for OCR analysis
         while cap.isOpened() and extracted < ocr_samples:
@@ -428,8 +428,8 @@ def analyze_text_stability(video_path, num_samples=12):
                 break
                 
             if count % step == 0:
-                # PERFORMANCE: Lower resolution for faster OCR
-                frame_resized = cv2.resize(frame, (384, 384))  # Was 512x512
+                # CPU OPTIMIZATION: Even smaller resolution for faster OCR
+                frame_resized = cv2.resize(frame, (256, 256))  # Was 384x384
                 frames.append(frame_resized)
                 extracted += 1
                     
@@ -437,7 +437,7 @@ def analyze_text_stability(video_path, num_samples=12):
         
         cap.release()
         
-        if len(frames) < 2:  # Reduced minimum
+        if len(frames) < 1:  # Only need 1 frame minimum
             return None
         
         # Get OCR reader
@@ -1603,15 +1603,20 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             dinov2_samples = 4  # (was 8)
             print(f"📹 Long video ({duration:.1f}s) - using 8 frames (extreme speed optimization)")
         
-        # 4. EXTREME SPEED MODE: Disable slow analysis components temporarily
-        print(f"⚡ SPEED MODE: Skipping slow analysis components to prevent timeout")
+        # 4. CPU-OPTIMIZED ANALYSIS: Re-enable advanced components with speed optimizations
+        print(f"🔧 CPU-OPTIMIZED MODE: Re-enabling advanced analysis with speed optimizations")
         
-        # TEMPORARILY DISABLED for speed - these cause 3+ minute timeouts
-        trajectory_metrics = None  # calculate_lightweight_trajectory_metrics(filepath, num_samples=dinov2_samples)
-        optical_flow_metrics = None  # calculate_optical_flow_features(filepath, num_samples=dinov2_samples)
-        ocr_metrics = None  # analyze_text_stability(filepath, num_samples=dinov2_samples)
+        # Re-enable with aggressive optimizations for speed
+        print(f"📐 Calculating lightweight trajectory metrics ({max(2, dinov2_samples//2)} samples)...")
+        trajectory_metrics = calculate_lightweight_trajectory_metrics(filepath, num_samples=max(2, dinov2_samples//2))
         
-        print(f"⚡ Analysis components disabled - focusing on visual analysis only for sub-2-minute completion")
+        print(f"🌊 Calculating optical flow features ({max(2, dinov2_samples//2)} samples)...")
+        optical_flow_metrics = calculate_optical_flow_features(filepath, num_samples=max(2, dinov2_samples//2))
+        
+        print(f"📝 Analyzing text stability with OCR ({max(1, dinov2_samples//3)} samples)...")
+        ocr_metrics = analyze_text_stability(filepath, num_samples=max(1, dinov2_samples//3))
+        
+        print(f"🔧 Advanced analysis re-enabled with CPU optimizations for accuracy + speed balance")
         
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False}
         
