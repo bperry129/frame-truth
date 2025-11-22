@@ -1,12 +1,17 @@
 # Python dependencies for FastAPI backend
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
 fastapi==0.104.1
 uvicorn==0.24.0
 python-dotenv==1.0.0
 numpy<2.0.0
-opencv-python==4.8.1.78
+opencv-python-headless==4.8.1.78
 yt-dlp>=2024.11.18
 requests==2.31.0
 pydantic==2.5.0
 python-multipart==0.0.6
 curl-cffi>=0.5.10
 brotli>=1.0.9
+pillow
+easyocr
