@@ -2036,15 +2036,15 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
     - Real-world videos can have compression artifacts, editing, and imperfections
 
     Output STRICTLY in JSON format:
-    {
+    {{
         "isAi": boolean,
         "confidence": number (0-100),
         "curvatureScore": number (0-100),
         "distanceScore": number (0-100),
         "reasoning": string[],
-        "trajectoryData": [{ "x": number, "y": number, "frame": number }],
+        "trajectoryData": [{{"x": number, "y": number, "frame": number}}],
         "modelDetected": string
-    }
+    }}
 
     MANDATORY REQUIREMENTS:
     1. "reasoning": List 4-6 specific OBJECTIVE observations based on what you see
