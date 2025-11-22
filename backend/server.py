@@ -580,6 +580,97 @@ async def download_with_cookies(url: str, file_id: str) -> dict:
         print(f"❌ Cookie-based download failed: {str(e)}")
         raise
 
+async def download_with_tiktok_api(url: str, file_id: str) -> dict:
+    """
+    TikTok-specific download using Cobalt API (works great for TikTok)
+    """
+    print(f"🔄 Attempting TikTok API download for: {url}")
+    
+    try:
+        # Cobalt API for TikTok (very reliable)
+        cobalt_instances = [
+            "https://api.cobalt.tools",
+            "https://cobalt.pub", 
+            "https://api.wuk.sh"
+        ]
+        
+        for instance in cobalt_instances:
+            try:
+                print(f"📤 Trying Cobalt instance: {instance}")
+                
+                response = requests.post(f"{instance}/api/json", 
+                    headers={
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    json={
+                        "url": url,
+                        "filenamePattern": "basic",
+                        "downloadMode": "auto"
+                    },
+                    timeout=30
+                )
+                
+                if response.status_code != 200:
+                    print(f"❌ {instance} failed with status {response.status_code}")
+                    continue
+                
+                data = response.json()
+                print(f"📥 Cobalt response: {json.dumps(data, indent=2)[:300]}")
+                
+                if data.get('status') == 'error':
+                    print(f"❌ {instance} returned error: {data.get('text')}")
+                    continue
+                
+                # Extract download URL
+                download_url = data.get('url')
+                if not download_url and data.get('picker'):
+                    # Multiple quality options
+                    download_url = data['picker'][0].get('url')
+                
+                if not download_url:
+                    print(f"❌ No download URL in response from {instance}")
+                    continue
+                
+                print(f"📥 Downloading TikTok video from: {download_url[:100]}...")
+                
+                # Download the video
+                video_response = requests.get(download_url, stream=True, timeout=120, headers={
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15'
+                })
+                video_response.raise_for_status()
+                
+                # Save to file
+                filename = f"{file_id}.mp4"
+                filepath = os.path.join(DOWNLOAD_DIR, filename)
+                
+                with open(filepath, 'wb') as f:
+                    for chunk in video_response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                
+                print(f"✅ TikTok download successful: {filename}")
+                
+                return {
+                    "filename": filename,
+                    "url": f"/videos/{filename}",
+                    "meta": {
+                        "title": "TikTok Video",
+                        "uploader": "TikTok User",
+                        "source": "cobalt_api"
+                    }
+                }
+                
+            except Exception as e:
+                print(f"❌ {instance} failed: {str(e)}")
+                continue
+        
+        raise Exception("All Cobalt instances failed")
+        
+    except Exception as e:
+        print(f"❌ TikTok API download failed: {str(e)}")
+        raise
+
 async def download_with_y2mate(url: str, file_id: str) -> dict:
     """
     Fallback download method using Y2Mate API (for YouTube bot detection bypass)
@@ -923,11 +1014,48 @@ async def download_video(request: DownloadRequest):
         error_msg = str(e)
         print(f"❌ Primary download method failed: {error_msg}")
         
-        # Check if this is a YouTube bot detection error
+        # Check platform and error type for appropriate fallback
         is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
+        is_tiktok = "tiktok.com" in request.url
+        is_facebook_error = "facebook" in error_msg.lower() and "cannot parse data" in error_msg.lower()
         is_bot_error = "Sign in to confirm" in error_msg or "bot" in error_msg.lower()
         
-        if is_youtube and is_bot_error:
+        # TikTok-specific error handling (including Facebook redirect issues)
+        if is_tiktok or is_facebook_error:
+            print(f"🔄 TikTok/social media error detected - attempting Cobalt API fallback...")
+            
+            try:
+                # Try TikTok-specific API as reliable fallback
+                result = await download_with_tiktok_api(request.url, file_id)
+                print(f"✅ TikTok API download successful!")
+                return result
+                
+            except Exception as tiktok_error:
+                print(f"❌ TikTok API fallback failed: {str(tiktok_error)}")
+                
+                # Provide helpful message for TikTok
+                helpful_msg = (
+                    "🚫 TikTok Download Failed\n\n"
+                    "Both download methods failed (yt-dlp + Cobalt API).\n\n"
+                    "✅ **Easy Workaround (30 seconds):**\n"
+                    "1. Download the TikTok video to your device (use any TikTok downloader)\n"
+                    "2. Click the 'Upload File' tab above\n"
+                    "3. Upload the video file\n"
+                    "4. Analyze as normal!\n\n"
+                    "💡 **Other Options:**\n"
+                    "• Try a different platform (YouTube, Instagram, Twitter all work great!)\n"
+                    "• Make sure the TikTok link is public and not private\n"
+                )
+                
+                return JSONResponse(status_code=400, content={
+                    "detail": helpful_msg,
+                    "error_type": "tiktok_download_failed",
+                    "primary_error": error_msg,
+                    "tiktok_api_error": str(tiktok_error)
+                })
+        
+        # YouTube-specific error handling
+        elif is_youtube and is_bot_error:
             print(f"🔄 YouTube bot detection - attempting RapidAPI fallback...")
             
             try:
@@ -959,7 +1087,7 @@ async def download_video(request: DownloadRequest):
                     "rapidapi_error": str(rapidapi_error)
                 })
         
-        # Non-YouTube error or non-bot error
+        # Generic error for other platforms
         return JSONResponse(status_code=400, content={"detail": f"Download failed: {error_msg}"})
 
 @app.post("/api/analyze")
