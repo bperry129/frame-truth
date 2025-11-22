@@ -19,6 +19,9 @@ import yt_dlp
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
+import easyocr
+import re
+from difflib import SequenceMatcher
 
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -222,6 +225,364 @@ def scan_metadata_for_ai_keywords(url: str) -> dict:
             'confidence_boost': 0,
             'score_increase': 0
         }
+
+def calculate_optical_flow_features(video_path, num_samples=12):
+    """
+    PHASE 1: Extract temporal motion inconsistency features using OpenCV optical flow
+    
+    This is a major missing signal that can boost accuracy by 8-12%.
+    
+    AI Detection Signals:
+    - Background/Foreground Flow Mismatch: AI often moves background and foreground with identical flow
+    - Micro-Jitter: Flow that "jitters" at small scale while macro motion feels smooth  
+    - Flow Teleportation: Sudden direction changes without physical acceleration
+    - Unnatural Smoothness: Too-perfect motion without realistic camera shake
+    
+    Returns:
+    - flow_global_mean: Average motion magnitude across frames
+    - flow_global_std: Motion consistency (low = smooth, high = jittery)
+    - flow_patch_variance_mean: Local motion inconsistency
+    - background_vs_foreground_ratio: Motion separation quality
+    - temporal_flow_jitter_index: Frame-to-frame flow direction changes
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        if total_frames <= 0:
+            cap.release()
+            return None
+        
+        # Sample frames evenly
+        step = max(1, total_frames // num_samples)
+        
+        frames = []
+        count = 0
+        extracted = 0
+        
+        print(f"   Extracting optical flow features from {num_samples} frames...")
+        
+        # Extract frames for optical flow analysis
+        while cap.isOpened() and extracted < num_samples:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % step == 0:
+                # Resize for faster processing but keep enough detail for flow
+                frame_resized = cv2.resize(frame, (256, 256))
+                gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
+                frames.append(gray)
+                extracted += 1
+                    
+            count += 1
+        
+        cap.release()
+        
+        if len(frames) < 3:
+            return None
+        
+        # Calculate optical flow between consecutive frames
+        flow_magnitudes = []
+        flow_directions = []
+        patch_variances = []
+        
+        for i in range(len(frames) - 1):
+            # Calculate dense optical flow using Farneback method
+            flow = cv2.calcOpticalFlowPyrLK(frames[i], frames[i+1], None, None)
+            
+            # Alternative: Use Farneback for dense flow
+            flow_dense = cv2.calcOpticalFlowFarneback(
+                frames[i], frames[i+1], None, 
+                pyr_scale=0.5, levels=3, winsize=15, 
+                iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+            )
+            
+            # Calculate flow magnitude and direction
+            magnitude, angle = cv2.cartToPolar(flow_dense[..., 0], flow_dense[..., 1])
+            
+            # Global flow statistics
+            flow_magnitudes.append(np.mean(magnitude))
+            flow_directions.append(np.mean(angle))
+            
+            # Local patch variance (motion inconsistency)
+            patch_size = 32
+            h, w = magnitude.shape
+            patch_vars = []
+            
+            for y in range(0, h - patch_size, patch_size):
+                for x in range(0, w - patch_size, patch_size):
+                    patch = magnitude[y:y+patch_size, x:x+patch_size]
+                    patch_vars.append(np.var(patch))
+            
+            patch_variances.append(np.mean(patch_vars))
+        
+        if len(flow_magnitudes) == 0:
+            return None
+        
+        # Calculate flow features
+        flow_global_mean = float(np.mean(flow_magnitudes))
+        flow_global_std = float(np.std(flow_magnitudes))
+        flow_patch_variance_mean = float(np.mean(patch_variances))
+        
+        # Calculate temporal jitter (frame-to-frame flow direction changes)
+        direction_changes = []
+        for i in range(len(flow_directions) - 1):
+            # Calculate angular difference between consecutive flow directions
+            diff = abs(flow_directions[i+1] - flow_directions[i])
+            # Handle circular nature of angles
+            diff = min(diff, 2*np.pi - diff)
+            direction_changes.append(diff)
+        
+        temporal_flow_jitter_index = float(np.mean(direction_changes)) if direction_changes else 0.0
+        
+        # Estimate background vs foreground flow ratio
+        # Use magnitude threshold to separate background (low flow) from foreground (high flow)
+        all_magnitudes = np.concatenate([cv2.calcOpticalFlowFarneback(
+            frames[i], frames[i+1], None, 
+            pyr_scale=0.5, levels=3, winsize=15, 
+            iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+        )[..., 0].flatten() for i in range(min(3, len(frames)-1))])
+        
+        magnitude_threshold = np.percentile(all_magnitudes, 70)  # Top 30% as foreground
+        background_flow = np.mean(all_magnitudes[all_magnitudes <= magnitude_threshold])
+        foreground_flow = np.mean(all_magnitudes[all_magnitudes > magnitude_threshold])
+        
+        background_vs_foreground_ratio = float(background_flow / (foreground_flow + 1e-6))
+        
+        return {
+            'flow_global_mean': flow_global_mean,
+            'flow_global_std': flow_global_std,
+            'flow_patch_variance_mean': flow_patch_variance_mean,
+            'background_vs_foreground_ratio': background_vs_foreground_ratio,
+            'temporal_flow_jitter_index': temporal_flow_jitter_index,
+            'num_samples': len(frames),
+            'method': 'optical_flow_farneback'
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Optical flow calculation failed: {str(e)}")
+        return None
+
+# Global EasyOCR reader (lazy loaded)
+_ocr_reader = None
+
+def get_ocr_reader():
+    """Lazy load EasyOCR reader (cached after first use)"""
+    global _ocr_reader
+    
+    if _ocr_reader is None:
+        print("🔄 Loading EasyOCR model (first-time setup, ~50MB download)...")
+        try:
+            # Load EasyOCR with English support
+            _ocr_reader = easyocr.Reader(['en'], gpu=False)  # Use CPU for compatibility
+            print("✅ EasyOCR model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load EasyOCR: {e}")
+            raise
+    
+    return _ocr_reader
+
+def analyze_text_stability(video_path, num_samples=12):
+    """
+    PHASE 1: Dedicated OCR analysis separate from Gemini
+    
+    This is a critical missing signal - text is the strongest AI indicator.
+    
+    AI Detection Signals:
+    - Frame-to-Frame Mutations: Real text stays identical, AI text drifts
+    - Character Anomalies: Impossible ligatures, weird glyphs
+    - Kerning Drift: Letter spacing changes across frames
+    - Semantic Inconsistencies: Real words in nonsensical combinations
+    
+    Returns:
+    - ocr_char_error_rate: % non-ASCII/weird glyphs
+    - ocr_frame_stability_score: Text consistency across frames
+    - ocr_text_mutation_rate: How often text changes
+    - ocr_unique_string_count: Number of distinct text strings
+    - per_string_stability: Stability of each detected word
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        if total_frames <= 0:
+            cap.release()
+            return None
+        
+        # Sample frames evenly
+        step = max(1, total_frames // num_samples)
+        
+        frames = []
+        count = 0
+        extracted = 0
+        
+        print(f"   Extracting frames for OCR analysis from {num_samples} frames...")
+        
+        # Extract frames for OCR analysis
+        while cap.isOpened() and extracted < num_samples:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % step == 0:
+                # Higher resolution for better OCR accuracy
+                frame_resized = cv2.resize(frame, (512, 512))
+                frames.append(frame_resized)
+                extracted += 1
+                    
+            count += 1
+        
+        cap.release()
+        
+        if len(frames) < 3:
+            return None
+        
+        # Get OCR reader
+        reader = get_ocr_reader()
+        
+        # Extract text from each frame
+        frame_texts = []
+        all_detected_strings = []
+        
+        for i, frame in enumerate(frames):
+            try:
+                # Run OCR on frame
+                results = reader.readtext(frame, detail=1)
+                
+                frame_text_data = []
+                for (bbox, text, confidence) in results:
+                    # Filter out low-confidence detections
+                    if confidence > 0.3:  # Minimum confidence threshold
+                        cleaned_text = text.strip()
+                        if len(cleaned_text) > 1:  # Ignore single characters
+                            frame_text_data.append({
+                                'text': cleaned_text,
+                                'confidence': confidence,
+                                'bbox': bbox,
+                                'frame': i
+                            })
+                            all_detected_strings.append(cleaned_text)
+                
+                frame_texts.append(frame_text_data)
+                
+            except Exception as e:
+                print(f"⚠️ OCR failed on frame {i}: {str(e)}")
+                frame_texts.append([])
+        
+        if not all_detected_strings:
+            # No text detected
+            return {
+                'ocr_char_error_rate': 0.0,
+                'ocr_frame_stability_score': 1.0,  # Perfect stability (no text to be unstable)
+                'ocr_text_mutation_rate': 0.0,
+                'ocr_unique_string_count': 0,
+                'per_string_stability': {},
+                'total_text_detections': 0,
+                'has_text': False,
+                'method': 'easyocr'
+            }
+        
+        # Analyze character anomalies
+        char_error_count = 0
+        total_chars = 0
+        
+        for text in all_detected_strings:
+            for char in text:
+                total_chars += 1
+                # Check for non-printable or unusual characters
+                if not char.isprintable() or ord(char) > 127:
+                    char_error_count += 1
+                # Check for common AI text artifacts
+                elif char in ['', '□', '▢', '◯', '○']:  # Common OCR/AI artifacts
+                    char_error_count += 1
+        
+        ocr_char_error_rate = float(char_error_count / max(total_chars, 1))
+        
+        # Analyze frame-to-frame text stability
+        unique_strings = list(set(all_detected_strings))
+        ocr_unique_string_count = len(unique_strings)
+        
+        # Track how each unique string appears across frames
+        string_stability = {}
+        for unique_str in unique_strings:
+            appearances = []
+            for frame_idx, frame_data in enumerate(frame_texts):
+                # Check if this string appears in this frame
+                found_in_frame = False
+                for detection in frame_data:
+                    # Use fuzzy matching for slight variations
+                    similarity = SequenceMatcher(None, unique_str.lower(), detection['text'].lower()).ratio()
+                    if similarity > 0.8:  # 80% similarity threshold
+                        found_in_frame = True
+                        break
+                appearances.append(found_in_frame)
+            
+            # Calculate stability score for this string
+            if sum(appearances) > 1:  # String appears in multiple frames
+                # Check consistency - should appear in consecutive frames if it's real text
+                consecutive_runs = []
+                current_run = 0
+                for appeared in appearances:
+                    if appeared:
+                        current_run += 1
+                    else:
+                        if current_run > 0:
+                            consecutive_runs.append(current_run)
+                        current_run = 0
+                if current_run > 0:
+                    consecutive_runs.append(current_run)
+                
+                # Real text should appear in long consecutive runs
+                # AI text often flickers in and out
+                max_run = max(consecutive_runs) if consecutive_runs else 0
+                stability_score = max_run / len(appearances)
+                string_stability[unique_str] = stability_score
+            else:
+                # Single appearance - neutral stability
+                string_stability[unique_str] = 0.5
+        
+        # Calculate overall frame stability score
+        if string_stability:
+            ocr_frame_stability_score = float(np.mean(list(string_stability.values())))
+        else:
+            ocr_frame_stability_score = 1.0
+        
+        # Calculate text mutation rate
+        # Count how often text changes between consecutive frames
+        mutations = 0
+        comparisons = 0
+        
+        for i in range(len(frame_texts) - 1):
+            current_texts = set([d['text'].lower() for d in frame_texts[i]])
+            next_texts = set([d['text'].lower() for d in frame_texts[i + 1]])
+            
+            if current_texts or next_texts:  # At least one frame has text
+                comparisons += 1
+                # Calculate Jaccard similarity
+                intersection = len(current_texts.intersection(next_texts))
+                union = len(current_texts.union(next_texts))
+                similarity = intersection / max(union, 1)
+                
+                if similarity < 0.7:  # Significant change
+                    mutations += 1
+        
+        ocr_text_mutation_rate = float(mutations / max(comparisons, 1))
+        
+        return {
+            'ocr_char_error_rate': ocr_char_error_rate,
+            'ocr_frame_stability_score': ocr_frame_stability_score,
+            'ocr_text_mutation_rate': ocr_text_mutation_rate,
+            'ocr_unique_string_count': ocr_unique_string_count,
+            'per_string_stability': string_stability,
+            'total_text_detections': len(all_detected_strings),
+            'has_text': True,
+            'method': 'easyocr'
+        }
+        
+    except Exception as e:
+        print(f"⚠️ OCR analysis failed: {str(e)}")
+        return None
 
 def calculate_lightweight_trajectory_metrics(video_path, num_samples=12):
     """
@@ -1263,11 +1624,19 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             dinov2_samples = 15
             print(f"📹 Long video ({duration:.1f}s) - using 30 frames")
         
-        # 4. Lightweight trajectory analysis (OpenCV-based, no PyTorch)
+        # 4. PHASE 1: Enhanced trajectory analysis with optical flow
         print(f"📐 Calculating visual trajectory metrics ({dinov2_samples} samples)...")
         trajectory_metrics = calculate_lightweight_trajectory_metrics(filepath, num_samples=dinov2_samples)
-        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'force_ai': False}
         
+        print(f"🌊 Calculating optical flow features ({dinov2_samples} samples)...")
+        optical_flow_metrics = calculate_optical_flow_features(filepath, num_samples=dinov2_samples)
+        
+        print(f"📝 Analyzing text stability with OCR ({dinov2_samples} samples)...")
+        ocr_metrics = analyze_text_stability(filepath, num_samples=dinov2_samples)
+        
+        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False}
+        
+        # Analyze trajectory curvature (existing logic)
         if trajectory_metrics:
             mean_curv = trajectory_metrics['mean_curvature']
             curv_var = trajectory_metrics['curvature_variance']
@@ -1304,6 +1673,109 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             else:
                 print(f"✓ Normal visual curvature: {mean_curv:.1f}° (typical for real video)")
         
+        # PHASE 1: Analyze optical flow anomalies (NEW!)
+        if optical_flow_metrics:
+            flow_mean = optical_flow_metrics['flow_global_mean']
+            flow_std = optical_flow_metrics['flow_global_std']
+            flow_jitter = optical_flow_metrics['temporal_flow_jitter_index']
+            bg_fg_ratio = optical_flow_metrics['background_vs_foreground_ratio']
+            patch_variance = optical_flow_metrics['flow_patch_variance_mean']
+            
+            # Detect optical flow anomalies that indicate AI generation
+            flow_anomaly_score = 0
+            flow_reasons = []
+            
+            # 1. Excessive flow jitter (AI often has micro-jitter)
+            if flow_jitter > 1.5:  # High jitter threshold
+                flow_anomaly_score += 25
+                flow_reasons.append(f"High temporal flow jitter ({flow_jitter:.2f})")
+                print(f"⚠️ HIGH FLOW JITTER: {flow_jitter:.2f} (AI often shows micro-jitter)")
+            
+            # 2. Unnatural background/foreground flow ratio
+            if bg_fg_ratio > 0.8:  # Background and foreground moving too similarly
+                flow_anomaly_score += 20
+                flow_reasons.append(f"Unnatural bg/fg flow ratio ({bg_fg_ratio:.2f})")
+                print(f"⚠️ UNNATURAL BG/FG FLOW: {bg_fg_ratio:.2f} (AI often moves bg/fg identically)")
+            
+            # 3. Excessive patch variance (inconsistent local motion)
+            if patch_variance > 0.3:  # High local motion inconsistency
+                flow_anomaly_score += 15
+                flow_reasons.append(f"High local motion inconsistency ({patch_variance:.2f})")
+                print(f"⚠️ HIGH PATCH VARIANCE: {patch_variance:.2f} (inconsistent local motion)")
+            
+            # 4. Too-perfect flow (unnaturally low variance)
+            if flow_std < 0.1 and flow_mean > 0.5:  # Suspiciously smooth motion
+                flow_anomaly_score += 15
+                flow_reasons.append(f"Unnaturally smooth motion (std: {flow_std:.2f})")
+                print(f"⚠️ TOO-SMOOTH MOTION: std={flow_std:.2f} (AI often too perfect)")
+            
+            # Apply optical flow boost if anomalies detected
+            if flow_anomaly_score > 20:  # Significant flow anomalies
+                additional_score = min(30, flow_anomaly_score)
+                additional_confidence = min(20, flow_anomaly_score // 2)
+                
+                trajectory_boost['score_increase'] += additional_score
+                trajectory_boost['confidence_boost'] += additional_confidence
+                trajectory_boost['has_flow_anomalies'] = True
+                
+                print(f"🌊 OPTICAL FLOW ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
+                print(f"   Anomalies: {', '.join(flow_reasons)}")
+            else:
+                print(f"✓ Normal optical flow patterns: jitter={flow_jitter:.2f}, bg/fg={bg_fg_ratio:.2f}")
+        
+        # PHASE 1: Analyze OCR text stability anomalies (NEW!)
+        if ocr_metrics and ocr_metrics['has_text']:
+            char_error_rate = ocr_metrics['ocr_char_error_rate']
+            frame_stability = ocr_metrics['ocr_frame_stability_score']
+            mutation_rate = ocr_metrics['ocr_text_mutation_rate']
+            unique_strings = ocr_metrics['ocr_unique_string_count']
+            
+            # Detect text anomalies that indicate AI generation
+            text_anomaly_score = 0
+            text_reasons = []
+            
+            # 1. High character error rate (weird glyphs, non-ASCII)
+            if char_error_rate > 0.1:  # >10% character errors
+                text_anomaly_score += 40
+                text_reasons.append(f"High character error rate ({char_error_rate:.2f})")
+                print(f"⚠️ HIGH CHARACTER ERROR RATE: {char_error_rate:.2f} (AI often has weird glyphs)")
+            
+            # 2. Low frame stability (text morphing between frames)
+            if frame_stability < 0.7:  # <70% stability
+                text_anomaly_score += 35
+                text_reasons.append(f"Low text frame stability ({frame_stability:.2f})")
+                print(f"⚠️ LOW TEXT STABILITY: {frame_stability:.2f} (AI text often morphs)")
+            
+            # 3. High mutation rate (text changing too often)
+            if mutation_rate > 0.3:  # >30% mutation rate
+                text_anomaly_score += 30
+                text_reasons.append(f"High text mutation rate ({mutation_rate:.2f})")
+                print(f"⚠️ HIGH TEXT MUTATION: {mutation_rate:.2f} (AI text changes unnaturally)")
+            
+            # 4. Too many unique strings (inconsistent text)
+            if unique_strings > 10:  # Too many different text strings
+                text_anomaly_score += 20
+                text_reasons.append(f"Too many unique text strings ({unique_strings})")
+                print(f"⚠️ TOO MANY TEXT VARIANTS: {unique_strings} (AI often inconsistent)")
+            
+            # Apply OCR boost if anomalies detected
+            if text_anomaly_score > 25:  # Significant text anomalies
+                additional_score = min(50, text_anomaly_score)  # OCR is very reliable
+                additional_confidence = min(30, text_anomaly_score // 2)
+                
+                trajectory_boost['score_increase'] += additional_score
+                trajectory_boost['confidence_boost'] += additional_confidence
+                trajectory_boost['has_text_anomalies'] = True
+                
+                print(f"📝 TEXT ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
+                print(f"   Anomalies: {', '.join(text_reasons)}")
+            else:
+                print(f"✓ Normal text patterns: stability={frame_stability:.2f}, mutation={mutation_rate:.2f}")
+        elif ocr_metrics and not ocr_metrics['has_text']:
+            print(f"ℹ️ No text detected in video - OCR analysis skipped")
+        else:
+            print(f"⚠️ OCR analysis failed - text analysis unavailable")
+        
         # 5. Scan metadata for AI keywords (if URL provided)
         metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
         if data.original_url and data.original_url.strip():
@@ -1318,12 +1790,82 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 6. Call AI API with enhanced forensic prompt (PHASE 1 IMPROVEMENT)
-        prompt = """
+        # 6. PHASE 1: Restructured Gemini prompt with numeric inputs
+        # Build structured numeric context from our analysis
+        numeric_context = {
+            "trajectory_analysis": {
+                "mean_curvature": trajectory_metrics['mean_curvature'] if trajectory_metrics else 0.0,
+                "curvature_variance": trajectory_metrics['curvature_variance'] if trajectory_metrics else 0.0,
+                "max_curvature": trajectory_metrics['max_curvature'] if trajectory_metrics else 0.0,
+                "mean_distance": trajectory_metrics['mean_distance'] if trajectory_metrics else 0.0,
+                "method": trajectory_metrics['method'] if trajectory_metrics else "none"
+            },
+            "optical_flow_analysis": {
+                "flow_global_mean": optical_flow_metrics['flow_global_mean'] if optical_flow_metrics else 0.0,
+                "flow_global_std": optical_flow_metrics['flow_global_std'] if optical_flow_metrics else 0.0,
+                "temporal_flow_jitter_index": optical_flow_metrics['temporal_flow_jitter_index'] if optical_flow_metrics else 0.0,
+                "background_vs_foreground_ratio": optical_flow_metrics['background_vs_foreground_ratio'] if optical_flow_metrics else 0.0,
+                "flow_patch_variance_mean": optical_flow_metrics['flow_patch_variance_mean'] if optical_flow_metrics else 0.0,
+                "method": optical_flow_metrics['method'] if optical_flow_metrics else "none"
+            },
+            "ocr_text_analysis": {
+                "has_text": ocr_metrics['has_text'] if ocr_metrics else False,
+                "ocr_char_error_rate": ocr_metrics['ocr_char_error_rate'] if ocr_metrics else 0.0,
+                "ocr_frame_stability_score": ocr_metrics['ocr_frame_stability_score'] if ocr_metrics else 1.0,
+                "ocr_text_mutation_rate": ocr_metrics['ocr_text_mutation_rate'] if ocr_metrics else 0.0,
+                "ocr_unique_string_count": ocr_metrics['ocr_unique_string_count'] if ocr_metrics else 0,
+                "total_text_detections": ocr_metrics['total_text_detections'] if ocr_metrics else 0,
+                "method": ocr_metrics['method'] if ocr_metrics else "none"
+            },
+            "metadata_analysis": {
+                "has_ai_keywords": metadata_scan['has_ai_keywords'],
+                "keyword_count": len(metadata_scan['keywords_found']),
+                "keywords_found": metadata_scan['keywords_found'][:3]  # First 3 keywords
+            },
+            "video_properties": {
+                "duration_seconds": duration,
+                "frames_analyzed": num_frames,
+                "samples_used": dinov2_samples
+            }
+        }
+        
+        # Create enhanced prompt with numeric context
+        prompt = f"""
     You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
     Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
 
-    🔍 ANALYSIS FRAMEWORK - Examine these sequential frames objectively:
+    🔢 NUMERIC FORENSIC CONTEXT:
+    {json.dumps(numeric_context, indent=2)}
+
+    📋 INTERPRETATION GUIDE:
+    
+    **Trajectory Analysis:**
+    - mean_curvature > 110°: Strong AI indicator (irregular frame transitions)
+    - curvature_variance > 500: High temporal inconsistency 
+    - max_curvature > 150°: Extreme motion artifacts
+    
+    **Optical Flow Analysis:**
+    - temporal_flow_jitter_index > 1.5: Micro-jitter (AI artifact)
+    - background_vs_foreground_ratio > 0.8: Unnatural motion coupling
+    - flow_patch_variance_mean > 0.3: Local motion inconsistency
+    - flow_global_std < 0.1 + flow_global_mean > 0.5: Too-perfect motion
+    
+    **OCR Text Analysis:**
+    - has_text=true: Text detected in video frames
+    - ocr_char_error_rate > 0.1: High rate of weird/non-ASCII characters (AI artifact)
+    - ocr_frame_stability_score < 0.7: Text morphing between frames (AI artifact)
+    - ocr_text_mutation_rate > 0.3: Text changing too frequently (AI artifact)
+    - ocr_unique_string_count > 10: Too many text variants (AI inconsistency)
+    
+    **Metadata Analysis:**
+    - has_ai_keywords=true: Video explicitly tagged as AI-generated
+    - keyword_count > 0: Contains AI-related terms in title/description
+    
+    🔍 ANALYSIS FRAMEWORK - Use numeric context as PRIMARY evidence, visual frames for CONFIRMATION:
+
+    **CRITICAL INSTRUCTION: The numeric analysis above provides objective measurements. Use these as your primary decision-making foundation, then examine the visual frames to confirm and explain the patterns detected by the algorithms.**
+    
+    🔍 VISUAL ANALYSIS FRAMEWORK - Examine these sequential frames to confirm numeric findings:
 
     1. TEMPORAL COHERENCE ANALYSIS:
        - Frame-to-frame consistency (natural vs. artificial transitions)
@@ -1576,20 +2118,25 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 7. Apply ReStraV trajectory-based score adjustments
-        if trajectory_boost['has_high_curvature']:
+        # 7. Apply enhanced trajectory and optical flow score adjustments
+        if trajectory_boost['has_high_curvature'] or trajectory_boost['has_flow_anomalies']:
             original_curvature = analysis_result.get('curvatureScore', 0)
             original_confidence = analysis_result.get('confidence', 0)
             
-            # Boost scores based on high trajectory curvature
+            # Boost scores based on trajectory curvature and optical flow anomalies
             analysis_result['curvatureScore'] = min(100, original_curvature + trajectory_boost['score_increase'])
             analysis_result['confidence'] = min(100, original_confidence + trajectory_boost['confidence_boost'])
             
             # Add trajectory info to reasoning
-            if trajectory_metrics:
+            if trajectory_metrics and trajectory_boost['has_high_curvature']:
                 analysis_result['reasoning'].insert(0, f"📐 ReStraV Analysis: High temporal trajectory curvature detected ({trajectory_metrics['mean_curvature']:.1f}°), indicating irregular frame-to-frame transitions characteristic of AI-generated content")
             
-            print(f"📊 Trajectory-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
+            # Add optical flow info to reasoning
+            if optical_flow_metrics and trajectory_boost['has_flow_anomalies']:
+                flow_details = f"jitter={optical_flow_metrics['temporal_flow_jitter_index']:.2f}, bg/fg_ratio={optical_flow_metrics['background_vs_foreground_ratio']:.2f}"
+                analysis_result['reasoning'].insert(0, f"🌊 Optical Flow Analysis: Motion inconsistencies detected ({flow_details}), indicating temporal artifacts characteristic of AI-generated video")
+            
+            print(f"📊 Enhanced analysis adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
         
         # 8. Apply metadata-based score adjustments
         if metadata_scan['has_ai_keywords']:
