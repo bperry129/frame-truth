@@ -1221,23 +1221,28 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             curv_var = trajectory_metrics['curvature_variance']
             mean_dist = trajectory_metrics['mean_distance']
             
-            # NOTE: Using lightweight visual features (not semantic DINOv2)
-            # Visual curvature thresholds are MUCH higher than semantic thresholds
-            # Real videos with camera motion, zooms, scene changes = high visual curvature (normal!)
-            # Only extremely irregular patterns indicate AI
+            # IMPROVED: More aggressive thresholds for better AI detection
+            # After analysis, many AI videos show curvature in 80-120° range
+            # Real videos typically stay under 90° even with camera motion
             
-            if mean_curv > 130:  # VERY strong AI indicator
-                trajectory_boost['score_increase'] = min(40, int((mean_curv - 130) * 2))  # Up to +40
-                trajectory_boost['confidence_boost'] = min(30, int((mean_curv - 130) * 1.5))  # Up to +30
+            if mean_curv > 95:  # VERY strong AI indicator (lowered from 130)
+                trajectory_boost['score_increase'] = min(50, int((mean_curv - 95) * 3))  # Up to +50 (increased)
+                trajectory_boost['confidence_boost'] = min(40, int((mean_curv - 95) * 2))  # Up to +40 (increased)
                 trajectory_boost['has_high_curvature'] = True
                 trajectory_boost['force_ai'] = True  # Override visual analysis
                 print(f"🚨 EXTREMELY HIGH VISUAL CURVATURE: {mean_curv:.1f}° - VERY STRONG AI INDICATOR")
                 print(f"   Forcing AI classification (overriding visual analysis)")
-            elif mean_curv > 110:  # Moderate AI indicator
-                trajectory_boost['score_increase'] = min(25, int((mean_curv - 110) * 2))  # Up to +25
-                trajectory_boost['confidence_boost'] = min(20, int((mean_curv - 110) * 1.5))  # Up to +20
+            elif mean_curv > 75:  # Strong AI indicator (lowered from 110)
+                trajectory_boost['score_increase'] = min(35, int((mean_curv - 75) * 2))  # Up to +35
+                trajectory_boost['confidence_boost'] = min(25, int((mean_curv - 75) * 1.5))  # Up to +25
                 trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
+                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (strong AI indicator)")
+                print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
+            elif mean_curv > 60:  # Moderate AI indicator (new threshold)
+                trajectory_boost['score_increase'] = min(20, int((mean_curv - 60) * 1.5))  # Up to +20
+                trajectory_boost['confidence_boost'] = min(15, int((mean_curv - 60) * 1))  # Up to +15
+                trajectory_boost['has_high_curvature'] = True
+                print(f"⚠️ MODERATE VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
                 print(f"   Score boost: +{trajectory_boost['score_increase']}, Confidence boost: +{trajectory_boost['confidence_boost']}")
             else:
                 print(f"✓ Normal visual curvature: {mean_curv:.1f}° (natural video motion)")
@@ -1555,8 +1560,8 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             analysis_result['modelDetected'] = 'Unknown AI Model' if analysis_result.get('modelDetected') == 'Real Camera' else analysis_result.get('modelDetected')
             print(f"🚨 FORCING AI CLASSIFICATION due to extreme trajectory irregularity (overriding visual analysis)")
         
-        # 10. Final AI determination based on combined signals
-        elif analysis_result.get('curvatureScore', 0) >= 65:
+        # 10. Final AI determination based on combined signals (more aggressive)
+        elif analysis_result.get('curvatureScore', 0) >= 55:  # Lowered from 65 to 55
             analysis_result['isAi'] = True
 
         # 11. Save Submission AUTOMATICALLY
