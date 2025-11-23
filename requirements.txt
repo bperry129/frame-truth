@@ -15,3 +15,7 @@ curl-cffi>=0.5.10
 brotli>=1.0.9
 pillow
 easyocr
+# Machine Learning Dependencies for Evidence-Based Scorer
+scikit-learn>=1.3.0
+joblib>=1.3.0
+pandas>=1.5.0
