@@ -2104,57 +2104,136 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 13. Apply enhanced trajectory, optical flow, OCR, and PRNU score adjustments
-        if (trajectory_boost['has_high_curvature'] or trajectory_boost['has_flow_anomalies'] or 
-            trajectory_boost['has_text_anomalies'] or trajectory_boost['has_prnu_anomalies']):
-            original_curvature = analysis_result.get('curvatureScore', 0)
-            original_confidence = analysis_result.get('confidence', 0)
-            
-            # Boost scores based on all detected anomalies
-            analysis_result['curvatureScore'] = min(100, original_curvature + trajectory_boost['score_increase'])
-            analysis_result['confidence'] = min(100, original_confidence + trajectory_boost['confidence_boost'])
-            
-            # Add detailed reasoning for each type of anomaly detected
-            if trajectory_metrics and trajectory_boost['has_high_curvature']:
-                analysis_result['reasoning'].insert(0, f"📐 ReStraV Analysis: High temporal trajectory curvature detected ({trajectory_metrics['mean_curvature']:.1f}°), indicating irregular frame-to-frame transitions characteristic of AI-generated content")
-            
-            if optical_flow_metrics and trajectory_boost['has_flow_anomalies']:
-                flow_details = f"jitter={optical_flow_metrics['temporal_flow_jitter_index']:.2f}, bg/fg_ratio={optical_flow_metrics['background_vs_foreground_ratio']:.2f}"
-                analysis_result['reasoning'].insert(0, f"🌊 Optical Flow Analysis: Motion inconsistencies detected ({flow_details}), indicating temporal artifacts characteristic of AI-generated video")
-            
-            if ocr_metrics and trajectory_boost['has_text_anomalies']:
-                text_details = f"stability={ocr_metrics['ocr_frame_stability_score']:.2f}, mutation_rate={ocr_metrics['ocr_text_mutation_rate']:.2f}"
-                analysis_result['reasoning'].insert(0, f"📝 OCR Text Analysis: Text anomalies detected ({text_details}), indicating frame-to-frame text inconsistencies characteristic of AI-generated content")
-            
-            if prnu_metrics and trajectory_boost['has_prnu_anomalies']:
-                prnu_details = f"mean_corr={prnu_metrics['prnu_mean_corr']:.3f}, consistency={prnu_metrics['prnu_consistency_score']:.3f}"
-                analysis_result['reasoning'].insert(0, f"🔬 PRNU Sensor Fingerprint: Camera sensor inconsistencies detected ({prnu_details}), indicating lack of physical camera sensor characteristics typical of AI-generated content")
-            
-            print(f"📊 Enhanced analysis adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
+        # 13. 🚀 NEW DATA-DRIVEN SCORING SYSTEM (NO MORE ARBITRARY POINTS!)
+        print(f"🎯 Applying new data-driven scoring system...")
         
-        # 14. Apply metadata-based score adjustments
-        if metadata_scan['has_ai_keywords']:
-            original_curvature = analysis_result.get('curvatureScore', 0)
-            original_confidence = analysis_result.get('confidence', 0)
+        # Load calibrated scorer (if available)
+        try:
+            from calibration.data_driven_scorer import DataDrivenScorer
+            calibration_file = "calibration/calibrated_thresholds.json"
             
-            # Boost scores based on AI keyword detection
-            analysis_result['curvatureScore'] = min(100, original_curvature + metadata_scan['score_increase'])
-            analysis_result['confidence'] = min(100, original_confidence + metadata_scan['confidence_boost'])
+            if os.path.exists(calibration_file):
+                scorer = DataDrivenScorer()
+                scorer.load_calibration(calibration_file)
+                print(f"✅ Using calibrated thresholds from {calibration_file}")
+            else:
+                # Use default thresholds if no calibration available
+                scorer = DataDrivenScorer()
+                print(f"⚠️ No calibration file found, using default thresholds")
             
-            # If score is now high, set isAi to true
-            if analysis_result['curvatureScore'] >= 60:
+            # Prepare features for scorer
+            structural_features = {}
+            
+            # Trajectory features
+            if trajectory_metrics:
+                structural_features.update({
+                    'trajectory_curvature_mean': trajectory_metrics['mean_curvature'],
+                    'trajectory_curvature_std': trajectory_metrics['curvature_variance'] ** 0.5,  # Convert variance to std
+                    'trajectory_max_curvature': trajectory_metrics['max_curvature']
+                })
+            
+            # Optical flow features
+            if optical_flow_metrics:
+                structural_features.update({
+                    'flow_jitter_index': optical_flow_metrics['temporal_flow_jitter_index'],
+                    'flow_bg_fg_ratio': optical_flow_metrics['background_vs_foreground_ratio'],
+                    'flow_patch_variance': optical_flow_metrics['flow_patch_variance_mean'],
+                    'flow_smoothness_score': 1.0 / (optical_flow_metrics['flow_global_std'] + 1e-6)
+                })
+            
+            # OCR features
+            if ocr_metrics:
+                structural_features.update({
+                    'ocr_has_text': ocr_metrics['has_text'],
+                    'ocr_char_error_rate': ocr_metrics['ocr_char_error_rate'],
+                    'ocr_frame_stability': ocr_metrics['ocr_frame_stability_score'],
+                    'ocr_mutation_rate': ocr_metrics['ocr_text_mutation_rate']
+                })
+            
+            # PRNU features
+            if prnu_metrics:
+                structural_features.update({
+                    'prnu_mean_correlation': prnu_metrics['prnu_mean_corr'],
+                    'prnu_std_correlation': prnu_metrics['prnu_std_corr'],
+                    'prnu_positive_ratio': prnu_metrics['prnu_positive_ratio']
+                })
+            
+            # Metadata features (minimal impact)
+            structural_features['metadata_ai_keywords'] = metadata_scan['has_ai_keywords']
+            
+            # Get Gemini probability from analysis result
+            gemini_confidence = analysis_result.get('confidence', 50) / 100.0
+            gemini_is_ai = analysis_result.get('isAi', False)
+            
+            # Convert to probability (0-1 scale where 1 = AI)
+            if gemini_is_ai:
+                gemini_prob = max(0.5, gemini_confidence)  # At least 50% if classified as AI
+            else:
+                gemini_prob = min(0.5, 1.0 - gemini_confidence)  # At most 50% if classified as real
+            
+            # Apply new scoring system
+            new_result = scorer.evaluate_video(structural_features, gemini_prob)
+            
+            # Update analysis result with new scoring
+            analysis_result['isAi'] = new_result['label'] in ['AI', 'Likely AI']
+            analysis_result['confidence'] = new_result['confidence']
+            
+            # Add detailed explanation
+            analysis_result['reasoning'].insert(0, f"🎯 Data-Driven Analysis: {new_result['explanation']}")
+            
+            # Add structural evidence details
+            if new_result['flags_ai'] > 0:
+                flag_details = []
+                if trajectory_metrics and trajectory_metrics['mean_curvature'] > scorer.thresholds.trajectory_curvature_high:
+                    flag_details.append(f"high trajectory curvature ({trajectory_metrics['mean_curvature']:.1f}°)")
+                if optical_flow_metrics and optical_flow_metrics['temporal_flow_jitter_index'] > scorer.thresholds.flow_jitter_high:
+                    flag_details.append(f"excessive flow jitter ({optical_flow_metrics['temporal_flow_jitter_index']:.2f})")
+                if ocr_metrics and ocr_metrics['has_text'] and ocr_metrics['ocr_char_error_rate'] > scorer.thresholds.ocr_char_error_moderate:
+                    flag_details.append(f"text anomalies (error rate: {ocr_metrics['ocr_char_error_rate']:.2f})")
+                if prnu_metrics and prnu_metrics['prnu_mean_corr'] < scorer.thresholds.prnu_correlation_low:
+                    flag_details.append(f"weak sensor fingerprint ({prnu_metrics['prnu_mean_corr']:.3f})")
+                
+                if flag_details:
+                    analysis_result['reasoning'].insert(0, f"🚨 Structural Evidence: {', '.join(flag_details)}")
+            
+            if new_result['flags_real'] > 0:
+                analysis_result['reasoning'].insert(0, f"✅ Real-like Evidence: Structural patterns consistent with authentic camera footage")
+            
+            print(f"📊 Data-driven result: {new_result['label']} ({new_result['confidence']}% confidence)")
+            print(f"   Flags: {new_result['flags_ai']} AI, {new_result['flags_real']} Real")
+            print(f"   Gemini: {gemini_prob:.2f}, Structural: {new_result.get('structural_prob', 0.5):.2f}")
+            
+        except Exception as e:
+            print(f"⚠️ Data-driven scoring failed, falling back to basic logic: {e}")
+            
+            # Fallback: Simple flag-based logic without arbitrary points
+            flags_ai = 0
+            flags_real = 0
+            
+            # Count major anomalies
+            if trajectory_metrics and trajectory_metrics['mean_curvature'] > 120:
+                flags_ai += 1
+            if optical_flow_metrics and optical_flow_metrics['temporal_flow_jitter_index'] > 1.5:
+                flags_ai += 1
+            if ocr_metrics and ocr_metrics['has_text'] and ocr_metrics['ocr_char_error_rate'] > 0.1:
+                flags_ai += 1
+            if prnu_metrics and prnu_metrics['prnu_mean_corr'] < 0.1:
+                flags_ai += 1
+            
+            # Simple decision logic
+            original_confidence = analysis_result.get('confidence', 50)
+            original_is_ai = analysis_result.get('isAi', False)
+            
+            if flags_ai >= 2:  # Multiple structural anomalies
                 analysis_result['isAi'] = True
-            
-            # Add metadata info to reasoning
-            keyword_list = ', '.join(metadata_scan['keywords_found'][:5])  # Show first 5
-            analysis_result['reasoning'].insert(0, f"⚠️ METADATA ALERT: Video contains AI-related keywords in title/description/tags: {keyword_list}")
-            
-            print(f"📊 Metadata-based adjustment: curvature {original_curvature} → {analysis_result['curvatureScore']}, confidence {original_confidence} → {analysis_result['confidence']}")
-        
-        # 15. Final AI determination based on combined signals (balanced approach)
-        # Use all analysis as important supporting evidence for AI detection
-        if analysis_result.get('curvatureScore', 0) >= 60:  # Lowered to 60 for better AI detection
-            analysis_result['isAi'] = True
+                analysis_result['confidence'] = min(95, original_confidence + 20)
+                analysis_result['reasoning'].insert(0, f"🚨 Multiple structural anomalies detected ({flags_ai} flags)")
+            elif flags_ai == 1 and original_is_ai:
+                analysis_result['confidence'] = min(90, original_confidence + 10)
+                analysis_result['reasoning'].insert(0, f"⚠️ Structural evidence supports AI classification")
+            elif flags_ai >= 1 and not original_is_ai:
+                analysis_result['confidence'] = max(60, original_confidence - 10)
+                analysis_result['reasoning'].insert(0, f"⚠️ Some structural concerns detected")
 
         # 16. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
