@@ -1719,9 +1719,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         if optical_flow_metrics:
             flow_mean = optical_flow_metrics['flow_global_mean']
             flow_std = optical_flow_metrics['flow_global_std']
-            flow_jitter = optical_flow_metrics['temporal_flow_jitter_index']
-            bg_fg_ratio = optical_flow_metrics['background_vs_foreground_ratio']
-            patch_variance = optical_flow_metrics['flow_patch_variance_mean']
+            flow_jitter = optical_flow_metrics['flow_jitter_index']
+            bg_fg_ratio = optical_flow_metrics.get('background_vs_foreground_ratio', 0.0)
+            patch_variance = optical_flow_metrics.get('flow_patch_variance', 0.0)
             
             # Detect optical flow anomalies that indicate AI generation
             flow_anomaly_score = 0
@@ -1852,9 +1852,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             "optical_flow_analysis": {
                 "flow_global_mean": optical_flow_metrics['flow_global_mean'] if optical_flow_metrics else 0.0,
                 "flow_global_std": optical_flow_metrics['flow_global_std'] if optical_flow_metrics else 0.0,
-                "temporal_flow_jitter_index": optical_flow_metrics['temporal_flow_jitter_index'] if optical_flow_metrics else 0.0,
-                "background_vs_foreground_ratio": optical_flow_metrics['background_vs_foreground_ratio'] if optical_flow_metrics else 0.0,
-                "flow_patch_variance_mean": optical_flow_metrics['flow_patch_variance_mean'] if optical_flow_metrics else 0.0,
+                "temporal_flow_jitter_index": optical_flow_metrics['flow_jitter_index'] if optical_flow_metrics else 0.0,
+                "background_vs_foreground_ratio": optical_flow_metrics.get('background_vs_foreground_ratio', 0.0) if optical_flow_metrics else 0.0,
+                "flow_patch_variance_mean": optical_flow_metrics.get('flow_patch_variance', 0.0) if optical_flow_metrics else 0.0,
                 "method": optical_flow_metrics['method'] if optical_flow_metrics else "none"
             },
             "ocr_text_analysis": {
