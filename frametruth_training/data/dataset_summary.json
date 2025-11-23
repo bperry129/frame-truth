@@ -1,0 +1,13 @@
+{
+  "total_videos_requested": 100,
+  "videos_downloaded": 87,
+  "videos_skipped_download": 0,
+  "videos_failed_download": 13,
+  "frames_extracted": 87,
+  "frames_skipped": 0,
+  "frames_failed": 0,
+  "features_extracted": 87,
+  "dataset_path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\dataset.csv",
+  "processing_time_seconds": 1398.8830919265747,
+  "feature_columns": 44
+}

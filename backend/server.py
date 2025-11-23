@@ -22,6 +22,12 @@ from PIL import Image
 import easyocr
 import re
 from difflib import SequenceMatcher
+import sys
+from pathlib import Path
+
+# Add frametruth_training to path for evidence-based scorer
+sys.path.append(str(Path(__file__).parent.parent / "frametruth_training"))
+from evidence_based_scorer import EvidenceBasedScorer
 
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -2104,136 +2110,84 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 13. 🚀 NEW DATA-DRIVEN SCORING SYSTEM (NO MORE ARBITRARY POINTS!)
-        print(f"🎯 Applying new data-driven scoring system...")
+        # 13. 🚀 EVIDENCE-BASED MACHINE LEARNING ANALYSIS
+        print(f"🤖 Using Evidence-Based Scorer (trained on 87 videos with 66.7% accuracy)...")
         
-        # Load calibrated scorer (if available)
         try:
-            from calibration.data_driven_scorer import DataDrivenScorer
-            calibration_file = "calibration/calibrated_thresholds.json"
+            # Initialize the evidence-based scorer
+            scorer = EvidenceBasedScorer()
             
-            if os.path.exists(calibration_file):
-                scorer = DataDrivenScorer()
-                scorer.load_calibration(calibration_file)
-                print(f"✅ Using calibrated thresholds from {calibration_file}")
-            else:
-                # Use default thresholds if no calibration available
-                scorer = DataDrivenScorer()
-                print(f"⚠️ No calibration file found, using default thresholds")
+            # Prepare features dictionary for the trained model
+            features_dict = {}
             
-            # Prepare features for scorer
-            structural_features = {}
+            # Add all extracted features to the dictionary
+            if prnu_metrics:
+                features_dict.update({
+                    'prnu_mean_corr': prnu_metrics['prnu_mean_corr'],
+                    'prnu_std_corr': prnu_metrics['prnu_std_corr'],
+                    'prnu_positive_ratio': prnu_metrics['prnu_positive_ratio'],
+                    'prnu_consistency_score': prnu_metrics['prnu_consistency_score']
+                })
             
-            # Trajectory features
             if trajectory_metrics:
-                structural_features.update({
+                features_dict.update({
                     'trajectory_curvature_mean': trajectory_metrics['mean_curvature'],
-                    'trajectory_curvature_std': trajectory_metrics['curvature_variance'] ** 0.5,  # Convert variance to std
-                    'trajectory_max_curvature': trajectory_metrics['max_curvature']
+                    'trajectory_curvature_std': (trajectory_metrics['curvature_variance'] ** 0.5),
+                    'trajectory_max_curvature': trajectory_metrics['max_curvature'],
+                    'trajectory_mean_distance': trajectory_metrics['mean_distance']
                 })
             
-            # Optical flow features
             if optical_flow_metrics:
-                structural_features.update({
-                    'flow_jitter_index': optical_flow_metrics['temporal_flow_jitter_index'],
-                    'flow_bg_fg_ratio': optical_flow_metrics['background_vs_foreground_ratio'],
+                features_dict.update({
+                    'flow_global_mean': optical_flow_metrics['flow_global_mean'],
+                    'flow_global_std': optical_flow_metrics['flow_global_std'],
                     'flow_patch_variance': optical_flow_metrics['flow_patch_variance_mean'],
-                    'flow_smoothness_score': 1.0 / (optical_flow_metrics['flow_global_std'] + 1e-6)
+                    'flow_bg_fg_ratio': optical_flow_metrics['background_vs_foreground_ratio'],
+                    'flow_smoothness_score': 1.0 / (optical_flow_metrics['flow_global_std'] + 1e-6),
+                    'temporal_flow_jitter_index': optical_flow_metrics['temporal_flow_jitter_index']
                 })
             
-            # OCR features
             if ocr_metrics:
-                structural_features.update({
-                    'ocr_has_text': ocr_metrics['has_text'],
+                features_dict.update({
                     'ocr_char_error_rate': ocr_metrics['ocr_char_error_rate'],
                     'ocr_frame_stability': ocr_metrics['ocr_frame_stability_score'],
-                    'ocr_mutation_rate': ocr_metrics['ocr_text_mutation_rate']
+                    'ocr_mutation_rate': ocr_metrics['ocr_text_mutation_rate'],
+                    'ocr_unique_string_count': ocr_metrics['ocr_unique_string_count'],
+                    'ocr_total_detections': ocr_metrics['total_text_detections']
                 })
             
-            # PRNU features
-            if prnu_metrics:
-                structural_features.update({
-                    'prnu_mean_correlation': prnu_metrics['prnu_mean_corr'],
-                    'prnu_std_correlation': prnu_metrics['prnu_std_corr'],
-                    'prnu_positive_ratio': prnu_metrics['prnu_positive_ratio']
-                })
+            # Add metadata features
+            features_dict['metadata_ai_keywords'] = metadata_scan['has_ai_keywords']
             
-            # Metadata features (minimal impact)
-            structural_features['metadata_ai_keywords'] = metadata_scan['has_ai_keywords']
+            # Get evidence-based analysis using trained models
+            evidence_result = scorer.analyze_video_evidence_based(features_dict)
             
-            # Get Gemini probability from analysis result
-            gemini_confidence = analysis_result.get('confidence', 50) / 100.0
-            gemini_is_ai = analysis_result.get('isAi', False)
+            # Update analysis result with evidence-based predictions
+            analysis_result['isAi'] = evidence_result['verdict'] in ['AI Generated', 'Likely AI']
+            analysis_result['confidence'] = min(95, max(evidence_result['ai_probability'], analysis_result.get('confidence', 50)))
+            analysis_result['curvatureScore'] = evidence_result['ai_probability']
             
-            # Convert to probability (0-1 scale where 1 = AI)
-            if gemini_is_ai:
-                gemini_prob = max(0.5, gemini_confidence)  # At least 50% if classified as AI
-            else:
-                gemini_prob = min(0.5, 1.0 - gemini_confidence)  # At most 50% if classified as real
+            # Add evidence-based reasoning
+            analysis_result['reasoning'].insert(0, f"🤖 Evidence-Based ML Analysis: {evidence_result['ai_probability']:.1f}% AI probability")
+            analysis_result['reasoning'].insert(1, f"📊 Model: {evidence_result['analysis_method']} (trained on {evidence_result['training_data']})")
+            analysis_result['reasoning'].insert(2, f"🎯 Verdict: {evidence_result['verdict']} ({evidence_result['confidence']} confidence)")
             
-            # Apply new scoring system
-            new_result = scorer.evaluate_video(structural_features, gemini_prob)
+            # Add top contributing features
+            if evidence_result['top_contributors']:
+                contrib_text = "🔬 Key Evidence: " + ", ".join([
+                    f"{contrib['description']} ({contrib['contribution']:.3f})"
+                    for contrib in evidence_result['top_contributors'][:3]
+                ])
+                analysis_result['reasoning'].insert(3, contrib_text)
             
-            # Update analysis result with new scoring
-            analysis_result['isAi'] = new_result['label'] in ['AI', 'Likely AI']
-            analysis_result['confidence'] = new_result['confidence']
-            
-            # Add detailed explanation
-            analysis_result['reasoning'].insert(0, f"🎯 Data-Driven Analysis: {new_result['explanation']}")
-            
-            # Add structural evidence details
-            if new_result['flags_ai'] > 0:
-                flag_details = []
-                if trajectory_metrics and trajectory_metrics['mean_curvature'] > scorer.thresholds.trajectory_curvature_high:
-                    flag_details.append(f"high trajectory curvature ({trajectory_metrics['mean_curvature']:.1f}°)")
-                if optical_flow_metrics and optical_flow_metrics['temporal_flow_jitter_index'] > scorer.thresholds.flow_jitter_high:
-                    flag_details.append(f"excessive flow jitter ({optical_flow_metrics['temporal_flow_jitter_index']:.2f})")
-                if ocr_metrics and ocr_metrics['has_text'] and ocr_metrics['ocr_char_error_rate'] > scorer.thresholds.ocr_char_error_moderate:
-                    flag_details.append(f"text anomalies (error rate: {ocr_metrics['ocr_char_error_rate']:.2f})")
-                if prnu_metrics and prnu_metrics['prnu_mean_corr'] < scorer.thresholds.prnu_correlation_low:
-                    flag_details.append(f"weak sensor fingerprint ({prnu_metrics['prnu_mean_corr']:.3f})")
-                
-                if flag_details:
-                    analysis_result['reasoning'].insert(0, f"🚨 Structural Evidence: {', '.join(flag_details)}")
-            
-            if new_result['flags_real'] > 0:
-                analysis_result['reasoning'].insert(0, f"✅ Real-like Evidence: Structural patterns consistent with authentic camera footage")
-            
-            print(f"📊 Data-driven result: {new_result['label']} ({new_result['confidence']}% confidence)")
-            print(f"   Flags: {new_result['flags_ai']} AI, {new_result['flags_real']} Real")
-            print(f"   Gemini: {gemini_prob:.2f}, Structural: {new_result.get('structural_prob', 0.5):.2f}")
+            print(f"🤖 Evidence-Based Result: {evidence_result['verdict']} ({evidence_result['ai_probability']:.1f}% AI)")
+            print(f"   Model Accuracy: {evidence_result['model_accuracy']}")
+            print(f"   Top Features: {[c['feature'] for c in evidence_result['top_contributors'][:3]]}")
             
         except Exception as e:
-            print(f"⚠️ Data-driven scoring failed, falling back to basic logic: {e}")
-            
-            # Fallback: Simple flag-based logic without arbitrary points
-            flags_ai = 0
-            flags_real = 0
-            
-            # Count major anomalies
-            if trajectory_metrics and trajectory_metrics['mean_curvature'] > 120:
-                flags_ai += 1
-            if optical_flow_metrics and optical_flow_metrics['temporal_flow_jitter_index'] > 1.5:
-                flags_ai += 1
-            if ocr_metrics and ocr_metrics['has_text'] and ocr_metrics['ocr_char_error_rate'] > 0.1:
-                flags_ai += 1
-            if prnu_metrics and prnu_metrics['prnu_mean_corr'] < 0.1:
-                flags_ai += 1
-            
-            # Simple decision logic
-            original_confidence = analysis_result.get('confidence', 50)
-            original_is_ai = analysis_result.get('isAi', False)
-            
-            if flags_ai >= 2:  # Multiple structural anomalies
-                analysis_result['isAi'] = True
-                analysis_result['confidence'] = min(95, original_confidence + 20)
-                analysis_result['reasoning'].insert(0, f"🚨 Multiple structural anomalies detected ({flags_ai} flags)")
-            elif flags_ai == 1 and original_is_ai:
-                analysis_result['confidence'] = min(90, original_confidence + 10)
-                analysis_result['reasoning'].insert(0, f"⚠️ Structural evidence supports AI classification")
-            elif flags_ai >= 1 and not original_is_ai:
-                analysis_result['confidence'] = max(60, original_confidence - 10)
-                analysis_result['reasoning'].insert(0, f"⚠️ Some structural concerns detected")
+            print(f"⚠️ Evidence-based scorer failed: {e}")
+            print(f"   Falling back to Gemini analysis only")
+            # Keep original Gemini analysis result
 
         # 16. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()

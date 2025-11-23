@@ -1,0 +1,131 @@
+{
+  "video_id": "53f12045f875",
+  "video_path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\raw_videos\\53f12045f875.mp4",
+  "total_frames": 298,
+  "fps": 29.801324503311257,
+  "duration": 9.999555555555556,
+  "original_resolution": [
+    704,
+    1280
+  ],
+  "processed_resolution": [
+    256,
+    256
+  ],
+  "frames_requested": 16,
+  "frames_extracted": 16,
+  "frames": [
+    {
+      "frame_index": 0,
+      "original_frame_number": 0,
+      "timestamp": 0.0,
+      "filename": "frame_0000.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0000.jpg"
+    },
+    {
+      "frame_index": 1,
+      "original_frame_number": 18,
+      "timestamp": 0.604,
+      "filename": "frame_0001.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0001.jpg"
+    },
+    {
+      "frame_index": 2,
+      "original_frame_number": 37,
+      "timestamp": 1.2415555555555555,
+      "filename": "frame_0002.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0002.jpg"
+    },
+    {
+      "frame_index": 3,
+      "original_frame_number": 55,
+      "timestamp": 1.8455555555555556,
+      "filename": "frame_0003.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0003.jpg"
+    },
+    {
+      "frame_index": 4,
+      "original_frame_number": 74,
+      "timestamp": 2.483111111111111,
+      "filename": "frame_0004.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0004.jpg"
+    },
+    {
+      "frame_index": 5,
+      "original_frame_number": 93,
+      "timestamp": 3.1206666666666667,
+      "filename": "frame_0005.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0005.jpg"
+    },
+    {
+      "frame_index": 6,
+      "original_frame_number": 111,
+      "timestamp": 3.724666666666667,
+      "filename": "frame_0006.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0006.jpg"
+    },
+    {
+      "frame_index": 7,
+      "original_frame_number": 130,
+      "timestamp": 4.362222222222222,
+      "filename": "frame_0007.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0007.jpg"
+    },
+    {
+      "frame_index": 8,
+      "original_frame_number": 149,
+      "timestamp": 4.999777777777778,
+      "filename": "frame_0008.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0008.jpg"
+    },
+    {
+      "frame_index": 9,
+      "original_frame_number": 167,
+      "timestamp": 5.603777777777778,
+      "filename": "frame_0009.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0009.jpg"
+    },
+    {
+      "frame_index": 10,
+      "original_frame_number": 186,
+      "timestamp": 6.241333333333333,
+      "filename": "frame_0010.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0010.jpg"
+    },
+    {
+      "frame_index": 11,
+      "original_frame_number": 204,
+      "timestamp": 6.8453333333333335,
+      "filename": "frame_0011.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0011.jpg"
+    },
+    {
+      "frame_index": 12,
+      "original_frame_number": 223,
+      "timestamp": 7.48288888888889,
+      "filename": "frame_0012.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0012.jpg"
+    },
+    {
+      "frame_index": 13,
+      "original_frame_number": 242,
+      "timestamp": 8.120444444444445,
+      "filename": "frame_0013.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0013.jpg"
+    },
+    {
+      "frame_index": 14,
+      "original_frame_number": 260,
+      "timestamp": 8.724444444444444,
+      "filename": "frame_0014.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0014.jpg"
+    },
+    {
+      "frame_index": 15,
+      "original_frame_number": 279,
+      "timestamp": 9.362,
+      "filename": "frame_0015.jpg",
+      "path": "C:\\Users\\bperr\\Desktop\\frame-truth\\frametruth_training\\data\\frames\\53f12045f875\\frame_0015.jpg"
+    }
+  ]
+}
