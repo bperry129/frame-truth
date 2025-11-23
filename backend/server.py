@@ -29,6 +29,13 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "frametruth_training"))
 from evidence_based_scorer import EvidenceBasedScorer
 
+# Import feature extractors
+sys.path.append(str(Path(__file__).parent.parent / "frametruth_training" / "feature_extractor"))
+from frequency_features import compute_frequency_features
+from noise_features import compute_noise_features
+from codec_features import compute_codec_features
+from metadata_features import compute_metadata_features
+
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -361,7 +368,7 @@ def calculate_prnu_sensor_fingerprint(video_path, num_samples=16):
 
 def calculate_optical_flow_features(video_path, num_samples=12):
     """
-    CPU-OPTIMIZED optical flow analysis for speed + accuracy balance
+    FIXED: CPU-OPTIMIZED optical flow analysis for speed + accuracy balance
     
     This is a major missing signal that can boost accuracy by 8-12%.
     
@@ -374,9 +381,9 @@ def calculate_optical_flow_features(video_path, num_samples=12):
     Returns:
     - flow_global_mean: Average motion magnitude across frames
     - flow_global_std: Motion consistency (low = smooth, high = jittery)
-    - flow_patch_variance_mean: Local motion inconsistency
-    - background_vs_foreground_ratio: Motion separation quality
-    - temporal_flow_jitter_index: Frame-to-frame flow direction changes
+    - flow_patch_variance: Local motion inconsistency
+    - flow_jitter_index: Frame-to-frame flow direction changes
+    - flow_smoothness_score: Motion smoothness quality
     """
     try:
         cap = cv2.VideoCapture(video_path)
@@ -387,14 +394,14 @@ def calculate_optical_flow_features(video_path, num_samples=12):
             return None
         
         # CPU OPTIMIZATION: Minimal samples for speed
-        flow_samples = max(2, min(3, num_samples // 2))  # Max 3 frames (was 12)
+        flow_samples = max(3, min(5, num_samples))  # At least 3 frames for flow
         step = max(1, total_frames // flow_samples)
         
         frames = []
         count = 0
         extracted = 0
         
-        print(f"   CPU-optimized optical flow: analyzing {flow_samples} frames (minimal for speed)...")
+        print(f"   🌊 FIXED optical flow: analyzing {flow_samples} frames...")
         
         # Extract frames for optical flow analysis
         while cap.isOpened() and extracted < flow_samples:
@@ -404,7 +411,7 @@ def calculate_optical_flow_features(video_path, num_samples=12):
                 
             if count % step == 0:
                 # CPU OPTIMIZATION: Smaller resolution for faster processing
-                frame_resized = cv2.resize(frame, (128, 128))  # Was 256x256
+                frame_resized = cv2.resize(frame, (128, 128))
                 gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
                 frames.append(gray)
                 extracted += 1
@@ -413,51 +420,55 @@ def calculate_optical_flow_features(video_path, num_samples=12):
         
         cap.release()
         
-        if len(frames) < 2:  # Only need 2 frames minimum
+        if len(frames) < 2:  # Need at least 2 frames for flow
             return None
         
-        # Calculate optical flow between consecutive frames
+        # Calculate optical flow between consecutive frames using Farneback method
         flow_magnitudes = []
         flow_directions = []
         patch_variances = []
         
         for i in range(len(frames) - 1):
-            # Calculate dense optical flow using Farneback method
-            flow = cv2.calcOpticalFlowPyrLK(frames[i], frames[i+1], None, None)
-            
-            # Alternative: Use Farneback for dense flow
-            flow_dense = cv2.calcOpticalFlowFarneback(
-                frames[i], frames[i+1], None, 
-                pyr_scale=0.5, levels=3, winsize=15, 
-                iterations=3, poly_n=5, poly_sigma=1.2, flags=0
-            )
-            
-            # Calculate flow magnitude and direction
-            magnitude, angle = cv2.cartToPolar(flow_dense[..., 0], flow_dense[..., 1])
-            
-            # Global flow statistics
-            flow_magnitudes.append(np.mean(magnitude))
-            flow_directions.append(np.mean(angle))
-            
-            # Local patch variance (motion inconsistency)
-            patch_size = 32
-            h, w = magnitude.shape
-            patch_vars = []
-            
-            for y in range(0, h - patch_size, patch_size):
-                for x in range(0, w - patch_size, patch_size):
-                    patch = magnitude[y:y+patch_size, x:x+patch_size]
-                    patch_vars.append(np.var(patch))
-            
-            patch_variances.append(np.mean(patch_vars))
+            try:
+                # Use Farneback dense optical flow (more robust than LK)
+                flow = cv2.calcOpticalFlowFarneback(
+                    frames[i], frames[i+1], None, 
+                    pyr_scale=0.5, levels=2, winsize=13, 
+                    iterations=2, poly_n=5, poly_sigma=1.1, flags=0
+                )
+                
+                # Calculate flow magnitude and direction
+                magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+                
+                # Global flow statistics
+                flow_magnitudes.append(np.mean(magnitude))
+                flow_directions.append(np.mean(angle))
+                
+                # Local patch variance (motion inconsistency)
+                patch_size = 16  # Smaller patches for 128x128 frames
+                h, w = magnitude.shape
+                patch_vars = []
+                
+                for y in range(0, h - patch_size, patch_size):
+                    for x in range(0, w - patch_size, patch_size):
+                        patch = magnitude[y:y+patch_size, x:x+patch_size]
+                        patch_vars.append(np.var(patch))
+                
+                if patch_vars:
+                    patch_variances.append(np.mean(patch_vars))
+                
+            except Exception as flow_error:
+                print(f"   ⚠️ Flow calculation failed for frame pair {i}: {flow_error}")
+                continue
         
         if len(flow_magnitudes) == 0:
+            print(f"   ❌ No valid optical flow calculated")
             return None
         
         # Calculate flow features
         flow_global_mean = float(np.mean(flow_magnitudes))
         flow_global_std = float(np.std(flow_magnitudes))
-        flow_patch_variance_mean = float(np.mean(patch_variances))
+        flow_patch_variance = float(np.mean(patch_variances)) if patch_variances else 0.0
         
         # Calculate temporal jitter (frame-to-frame flow direction changes)
         direction_changes = []
@@ -468,30 +479,21 @@ def calculate_optical_flow_features(video_path, num_samples=12):
             diff = min(diff, 2*np.pi - diff)
             direction_changes.append(diff)
         
-        temporal_flow_jitter_index = float(np.mean(direction_changes)) if direction_changes else 0.0
+        flow_jitter_index = float(np.mean(direction_changes)) if direction_changes else 0.0
         
-        # Estimate background vs foreground flow ratio
-        # Use magnitude threshold to separate background (low flow) from foreground (high flow)
-        all_magnitudes = np.concatenate([cv2.calcOpticalFlowFarneback(
-            frames[i], frames[i+1], None, 
-            pyr_scale=0.5, levels=3, winsize=15, 
-            iterations=3, poly_n=5, poly_sigma=1.2, flags=0
-        )[..., 0].flatten() for i in range(min(3, len(frames)-1))])
+        # Calculate smoothness score (inverse of jitter)
+        flow_smoothness_score = 1.0 / (flow_jitter_index + 1e-6)
         
-        magnitude_threshold = np.percentile(all_magnitudes, 70)  # Top 30% as foreground
-        background_flow = np.mean(all_magnitudes[all_magnitudes <= magnitude_threshold])
-        foreground_flow = np.mean(all_magnitudes[all_magnitudes > magnitude_threshold])
-        
-        background_vs_foreground_ratio = float(background_flow / (foreground_flow + 1e-6))
+        print(f"   ✅ Optical flow computed: mean={flow_global_mean:.3f}, jitter={flow_jitter_index:.3f}")
         
         return {
             'flow_global_mean': flow_global_mean,
             'flow_global_std': flow_global_std,
-            'flow_patch_variance_mean': flow_patch_variance_mean,
-            'background_vs_foreground_ratio': background_vs_foreground_ratio,
-            'temporal_flow_jitter_index': temporal_flow_jitter_index,
+            'flow_patch_variance': flow_patch_variance,
+            'flow_jitter_index': flow_jitter_index,
+            'flow_smoothness_score': flow_smoothness_score,
             'num_samples': len(frames),
-            'method': 'optical_flow_farneback'
+            'method': 'optical_flow_farneback_fixed'
         }
         
     except Exception as e:
@@ -1596,6 +1598,35 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         print(f"📝 Analyzing text stability with OCR ({max(1, dinov2_samples//3)} samples)...")
         ocr_metrics = analyze_text_stability(filepath, num_samples=max(1, dinov2_samples//3))
         
+        # 🚀 ADD MISSING FEATURE EXTRACTORS FOR COMPLETE 36-FEATURE PIPELINE
+        print(f"🎵 Computing frequency domain features...")
+        # Extract frames for frequency analysis
+        cap = cv2.VideoCapture(filepath)
+        frames_for_freq = []
+        frame_count = 0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        step = max(1, total_frames // 4)  # Sample 4 frames
+        
+        while cap.isOpened() and len(frames_for_freq) < 4:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_count % step == 0:
+                frames_for_freq.append(frame)
+            frame_count += 1
+        cap.release()
+        
+        frequency_metrics = compute_frequency_features(frames_for_freq) if frames_for_freq else {}
+        
+        print(f"🔊 Computing noise/grain statistics...")
+        noise_metrics = compute_noise_features(frames_for_freq) if frames_for_freq else {}
+        
+        print(f"🎬 Computing codec/compression features...")
+        codec_metrics = compute_codec_features(filepath)
+        
+        print(f"📊 Computing metadata features...")
+        metadata_metrics = compute_metadata_features(filepath)
+        
         print(f"🔧 Advanced analysis re-enabled with CPU optimizations for accuracy + speed balance")
         
         trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False, 'has_prnu_anomalies': False}
@@ -2120,15 +2151,16 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             # Prepare features dictionary for the trained model
             features_dict = {}
             
-            # Add all extracted features to the dictionary
+            # 🚀 ADD ALL 36 FEATURES TO MATCH TRAINING DATA EXACTLY
+            
+            # PRNU Sensor Fingerprint Features (4 features)
             if prnu_metrics:
                 features_dict.update({
                     'prnu_mean_corr': prnu_metrics['prnu_mean_corr'],
-                    'prnu_std_corr': prnu_metrics['prnu_std_corr'],
-                    'prnu_positive_ratio': prnu_metrics['prnu_positive_ratio'],
-                    'prnu_consistency_score': prnu_metrics['prnu_consistency_score']
+                    'prnu_std_corr': prnu_metrics['prnu_std_corr']
                 })
             
+            # Trajectory Analysis Features (4 features)
             if trajectory_metrics:
                 features_dict.update({
                     'trajectory_curvature_mean': trajectory_metrics['mean_curvature'],
@@ -2137,27 +2169,65 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                     'trajectory_mean_distance': trajectory_metrics['mean_distance']
                 })
             
+            # Optical Flow Features (5 features)
             if optical_flow_metrics:
                 features_dict.update({
+                    'flow_jitter_index': optical_flow_metrics['flow_jitter_index'],
+                    'flow_patch_variance': optical_flow_metrics['flow_patch_variance'],
+                    'flow_smoothness_score': optical_flow_metrics['flow_smoothness_score'],
                     'flow_global_mean': optical_flow_metrics['flow_global_mean'],
-                    'flow_global_std': optical_flow_metrics['flow_global_std'],
-                    'flow_patch_variance': optical_flow_metrics['flow_patch_variance_mean'],
-                    'flow_bg_fg_ratio': optical_flow_metrics['background_vs_foreground_ratio'],
-                    'flow_smoothness_score': 1.0 / (optical_flow_metrics['flow_global_std'] + 1e-6),
-                    'temporal_flow_jitter_index': optical_flow_metrics['temporal_flow_jitter_index']
+                    'flow_global_std': optical_flow_metrics['flow_global_std']
                 })
             
+            # OCR Text Analysis Features (5 features)
             if ocr_metrics:
                 features_dict.update({
-                    'ocr_char_error_rate': ocr_metrics['ocr_char_error_rate'],
                     'ocr_frame_stability': ocr_metrics['ocr_frame_stability_score'],
                     'ocr_mutation_rate': ocr_metrics['ocr_text_mutation_rate'],
                     'ocr_unique_string_count': ocr_metrics['ocr_unique_string_count'],
                     'ocr_total_detections': ocr_metrics['total_text_detections']
                 })
             
-            # Add metadata features
-            features_dict['metadata_ai_keywords'] = metadata_scan['has_ai_keywords']
+            # Frequency Domain Features (4 features)
+            if frequency_metrics:
+                features_dict.update({
+                    'freq_low_power_mean': frequency_metrics.get('freq_low_power_mean', 0.0),
+                    'freq_mid_power_mean': frequency_metrics.get('freq_mid_power_mean', 0.0),
+                    'freq_high_power_mean': frequency_metrics.get('freq_high_power_mean', 0.0),
+                    'freq_high_low_ratio_mean': frequency_metrics.get('freq_high_low_ratio_mean', 0.0)
+                })
+            
+            # Noise/Grain Statistics Features (6 features)
+            if noise_metrics:
+                features_dict.update({
+                    'noise_variance_r_mean': noise_metrics.get('noise_variance_r_mean', 0.0),
+                    'noise_variance_g_mean': noise_metrics.get('noise_variance_g_mean', 0.0),
+                    'noise_variance_b_mean': noise_metrics.get('noise_variance_b_mean', 0.0),
+                    'cross_channel_corr_rg_mean': noise_metrics.get('cross_channel_corr_rg_mean', 0.0),
+                    'spatial_autocorr_mean': noise_metrics.get('spatial_autocorr_mean', 0.0),
+                    'temporal_noise_consistency': noise_metrics.get('temporal_noise_consistency', 0.0)
+                })
+            
+            # Codec/Compression Features (7 features)
+            if codec_metrics:
+                features_dict.update({
+                    'avg_bitrate': codec_metrics.get('avg_bitrate', 0.0),
+                    'i_frame_ratio': codec_metrics.get('i_frame_ratio', 0.0),
+                    'p_frame_ratio': codec_metrics.get('p_frame_ratio', 0.0),
+                    'b_frame_ratio': codec_metrics.get('b_frame_ratio', 0.0),
+                    'gop_length_mean': codec_metrics.get('gop_length_mean', 0.0),
+                    'gop_length_std': codec_metrics.get('gop_length_std', 0.0),
+                    'double_compression_score': codec_metrics.get('double_compression_score', 0.0)
+                })
+            
+            # Metadata Features (4 features)
+            if metadata_metrics:
+                features_dict.update({
+                    'duration_seconds': metadata_metrics.get('duration_seconds', duration),
+                    'fps': metadata_metrics.get('fps', fps),
+                    'resolution_width': metadata_metrics.get('resolution_width', 0),
+                    'resolution_height': metadata_metrics.get('resolution_height', 0)
+                })
             
             # Get evidence-based analysis using trained models
             evidence_result = scorer.analyze_video_evidence_based(features_dict)
