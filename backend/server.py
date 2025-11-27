@@ -36,6 +36,15 @@ except ImportError:
     USE_IMPROVED_SCORER = False
     print("⚠️ Using original Evidence-Based Scorer (66.7% accuracy)")
 
+# Import advanced AI detector for sophisticated generators
+try:
+    from advanced_ai_detector import AdvancedAIDetector
+    USE_ADVANCED_DETECTOR = True
+    print("✅ Using ADVANCED AI Detector for sophisticated generators (Sora, Runway Gen-3)")
+except ImportError:
+    USE_ADVANCED_DETECTOR = False
+    print("⚠️ Advanced AI Detector not available")
+
 # Import feature extractors
 sys.path.append(str(Path(__file__).parent.parent / "frametruth_training" / "feature_extractor"))
 from frequency_features import compute_frequency_features
@@ -2461,6 +2470,47 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             print(f"⚠️ Evidence-based scorer failed: {e}")
             print(f"   Falling back to Gemini analysis only")
             # Keep original Gemini analysis result
+
+        # 14. 🚀 ADVANCED AI DETECTOR FOR SOPHISTICATED GENERATORS
+        if USE_ADVANCED_DETECTOR:
+            print(f"🔬 Running Advanced AI Detector for sophisticated generators...")
+            try:
+                advanced_detector = AdvancedAIDetector()
+                advanced_result = advanced_detector.analyze_advanced_ai(filepath, features_dict)
+                
+                if advanced_result['advanced_ai_probability'] > 50:
+                    print(f"🚨 ADVANCED AI DETECTED: {advanced_result['advanced_ai_probability']:.1f}% probability")
+                    print(f"   Likely Generator: {advanced_result['likely_generator']}")
+                    print(f"   Detection Signals: {len(advanced_result['detection_signals'])}")
+                    
+                    # Apply advanced detection override if high confidence
+                    if advanced_result['confidence_level'] in ['medium', 'high'] and advanced_result['advanced_ai_probability'] > 60:
+                        print(f"🚨 ADVANCED OVERRIDE: Sophisticated AI detected with {advanced_result['confidence_level']} confidence")
+                        
+                        # Override the decision
+                        analysis_result['isAi'] = True
+                        analysis_result['confidence'] = min(95, max(75, advanced_result['advanced_ai_probability']))
+                        analysis_result['curvatureScore'] = advanced_result['advanced_ai_probability']
+                        analysis_result['modelDetected'] = advanced_result['likely_generator']
+                        
+                        # Update reasoning to explain the advanced detection
+                        analysis_result['reasoning'].insert(0, f"🔬 ADVANCED AI DETECTION: {advanced_result['advanced_ai_probability']:.1f}% probability of sophisticated AI generation")
+                        analysis_result['reasoning'].insert(1, f"🎯 Likely Generator: {advanced_result['likely_generator']}")
+                        
+                        # Add detection signals to reasoning
+                        if advanced_result['detection_signals']:
+                            signal_descriptions = []
+                            for signal in advanced_result['detection_signals'][:2]:  # Top 2 signals
+                                signal_descriptions.append(f"{signal['reason']} ({signal['strength']})")
+                            analysis_result['reasoning'].insert(2, f"🔍 Key Signals: {'; '.join(signal_descriptions)}")
+                        
+                        print(f"🚨 ADVANCED OVERRIDE APPLIED: Final decision = AI Generated ({advanced_result['advanced_ai_probability']:.1f}%)")
+                
+                else:
+                    print(f"✓ Advanced AI Detector: {advanced_result['advanced_ai_probability']:.1f}% AI probability (below threshold)")
+                    
+            except Exception as e:
+                print(f"⚠️ Advanced AI Detector failed: {e}")
 
         # 16. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
