@@ -1006,19 +1006,100 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
         
         print(f"📥 Downloading from unified API: {download_url[:100]}...")
         
-        # Download the video with YouTube-compatible headers
-        video_response = requests.get(download_url, stream=True, timeout=120, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.youtube.com/',
-            'Origin': 'https://www.youtube.com',
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'video',
-            'Sec-Fetch-Mode': 'no-cors',
-            'Sec-Fetch-Site': 'cross-site'
-        })
+        # ENHANCED: Try multiple strategies for downloading Google Video URLs
+        download_strategies = [
+            # Strategy 1: Direct download with YouTube headers
+            {
+                'name': 'YouTube Browser',
+                'headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.youtube.com/',
+                    'Origin': 'https://www.youtube.com',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Sec-Fetch-Dest': 'video',
+                    'Sec-Fetch-Mode': 'no-cors',
+                    'Sec-Fetch-Site': 'cross-site'
+                },
+                'timeout': 60
+            },
+            # Strategy 2: Mobile browser (often less restricted)
+            {
+                'name': 'Mobile Browser',
+                'headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+                    'Referer': 'https://m.youtube.com/',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive'
+                },
+                'timeout': 60
+            },
+            # Strategy 3: Android YouTube app simulation
+            {
+                'name': 'Android App',
+                'headers': {
+                    'User-Agent': 'com.google.android.youtube/19.29.37 (Linux; U; Android 13) gzip',
+                    'Accept': '*/*',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive'
+                },
+                'timeout': 60
+            },
+            # Strategy 4: Minimal headers (sometimes works when others fail)
+            {
+                'name': 'Minimal',
+                'headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': '*/*'
+                },
+                'timeout': 30
+            },
+            # Strategy 5: No headers at all (last resort)
+            {
+                'name': 'No Headers',
+                'headers': {},
+                'timeout': 30
+            }
+        ]
+        
+        video_response = None
+        last_error = None
+        
+        for i, strategy in enumerate(download_strategies):
+            try:
+                print(f"   🔄 Strategy {i+1}/{len(download_strategies)}: {strategy['name']}...")
+                
+                # Try the download with this strategy
+                video_response = requests.get(
+                    download_url, 
+                    stream=True, 
+                    timeout=strategy['timeout'], 
+                    headers=strategy['headers'],
+                    allow_redirects=True  # Follow redirects
+                )
+                
+                # Check if we got a successful response
+                if video_response.status_code == 200:
+                    print(f"   ✅ Strategy {i+1} ({strategy['name']}) successful!")
+                    break
+                else:
+                    print(f"   ❌ Strategy {i+1} failed: HTTP {video_response.status_code}")
+                    video_response = None
+                    continue
+                    
+            except Exception as e:
+                last_error = e
+                print(f"   ❌ Strategy {i+1} ({strategy['name']}) failed: {str(e)[:100]}")
+                video_response = None
+                continue
+        
+        if video_response is None:
+            # If all strategies failed, provide a more helpful error message
+            raise Exception(f"All download strategies failed. This is likely due to Google's enhanced bot protection. Last error: {last_error}")
         video_response.raise_for_status()
         
         # Determine file extension
