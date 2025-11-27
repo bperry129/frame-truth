@@ -1535,11 +1535,17 @@ async def download_video(request: DownloadRequest):
             })
             print(f"🌐 Generic platform detected - using universal settings")
         
-        # CRITICAL: Use cookies ONLY for YouTube (platform-specific)
+        # CRITICAL: Use cookies ONLY for YouTube (platform-specific) - with fallback
         is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
         if is_youtube and os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
-            print(f"🍪 Using YouTube cookies from: {COOKIES_FILE}")
+            # Check if cookies are recent (less than 30 days old)
+            import time
+            cookie_age = time.time() - os.path.getmtime(COOKIES_FILE)
+            if cookie_age < (30 * 24 * 60 * 60):  # 30 days
+                ydl_opts['cookiefile'] = COOKIES_FILE
+                print(f"🍪 Using YouTube cookies from: {COOKIES_FILE}")
+            else:
+                print(f"⚠️ YouTube cookies are old ({cookie_age/86400:.1f} days) - skipping to avoid bot detection")
         elif is_youtube:
             print(f"⚠️ YouTube URL detected but no cookies available - may encounter bot detection")
         else:
