@@ -117,42 +117,67 @@ class ImprovedEvidenceBasedScorer:
         
         # 4. CRITICAL FIX: Apply manual corrections for known issues
         
-        # Fix 1: PRNU Analysis Correction
+        # Fix 1: PRNU Analysis Correction (MOST RELIABLE SIGNAL)
         prnu_mean_corr = features_dict.get('prnu_mean_corr', 0.0)
         prnu_std_corr = features_dict.get('prnu_std_corr', 0.0)
         prnu_positive_ratio = features_dict.get('prnu_positive_ratio', 0.0)
         
         # If PRNU shows clear AI indicators, boost AI probability
         prnu_ai_score = 0
+        prnu_reasons = []
+        
         if prnu_mean_corr < 0.15:  # Low correlation = AI
-            prnu_ai_score += 0.3
+            prnu_ai_score += 0.4  # Increased from 0.3
+            prnu_reasons.append(f"Low sensor correlation ({prnu_mean_corr:.3f})")
         if prnu_std_corr > 0.3:  # High inconsistency = AI
-            prnu_ai_score += 0.25
+            prnu_ai_score += 0.35  # Increased from 0.25
+            prnu_reasons.append(f"High sensor inconsistency ({prnu_std_corr:.3f})")
         if prnu_positive_ratio < 0.5:  # Low positive ratio = AI
-            prnu_ai_score += 0.25
+            prnu_ai_score += 0.35  # Increased from 0.25
+            prnu_reasons.append(f"Low positive ratio ({prnu_positive_ratio:.3f})")
         
         # Fix 2: Trajectory Analysis Correction
         trajectory_curvature = features_dict.get('trajectory_curvature_mean', 0.0)
         if trajectory_curvature > 110:  # High curvature = AI
-            prnu_ai_score += min(0.4, (trajectory_curvature - 110) / 100)
+            trajectory_boost = min(0.5, (trajectory_curvature - 110) / 80)  # More aggressive
+            prnu_ai_score += trajectory_boost
+            prnu_reasons.append(f"High trajectory curvature ({trajectory_curvature:.1f}°)")
         
         # Fix 3: OCR Text Analysis Correction
         ocr_stability = features_dict.get('ocr_frame_stability', 1.0)
         ocr_mutation = features_dict.get('ocr_mutation_rate', 0.0)
         if ocr_stability < 0.7:  # Low stability = AI
-            prnu_ai_score += 0.3
+            prnu_ai_score += 0.4  # Increased from 0.3
+            prnu_reasons.append(f"Low text stability ({ocr_stability:.2f})")
         if ocr_mutation > 0.3:  # High mutation = AI
-            prnu_ai_score += 0.25
+            prnu_ai_score += 0.35  # Increased from 0.25
+            prnu_reasons.append(f"High text mutation ({ocr_mutation:.2f})")
+        
+        # Fix 4: 🚨 CRITICAL OVERRIDE for High PRNU Correlation (False Positive Fix)
+        # Some AI videos show artificially high PRNU correlation (synthetic grain)
+        # This is a known issue with modern AI models like Kling/Sora
+        if prnu_mean_corr > 0.7 and trajectory_curvature > 100:
+            # High PRNU + High curvature = Likely synthetic grain masking AI
+            prnu_ai_score += 0.6  # Strong override
+            prnu_reasons.append(f"Synthetic grain detected (high PRNU {prnu_mean_corr:.3f} + high curvature)")
+            print(f"🚨 SYNTHETIC GRAIN DETECTED: High PRNU ({prnu_mean_corr:.3f}) with high curvature ({trajectory_curvature:.1f}°)")
         
         # 5. Combine ensemble prediction with manual corrections
         ensemble_prob = (rf_prob + gb_prob) / 2
         
-        # Apply corrections (weighted combination)
-        if prnu_ai_score > 0.5:  # Strong manual indicators
-            corrected_prob = 0.3 * ensemble_prob + 0.7 * min(1.0, prnu_ai_score)
-        elif prnu_ai_score > 0.2:  # Moderate manual indicators
+        # 🚨 AGGRESSIVE CORRECTION: Don't let ML model override clear forensic evidence
+        if prnu_ai_score > 0.8:  # Very strong forensic indicators
+            corrected_prob = 0.1 * ensemble_prob + 0.9 * min(1.0, prnu_ai_score)
+            print(f"🚨 VERY STRONG AI INDICATORS: Forensic score {prnu_ai_score:.2f}, reasons: {prnu_reasons}")
+        elif prnu_ai_score > 0.6:  # Strong forensic indicators
+            corrected_prob = 0.2 * ensemble_prob + 0.8 * min(1.0, prnu_ai_score)
+            print(f"🚨 STRONG AI INDICATORS: Forensic score {prnu_ai_score:.2f}, reasons: {prnu_reasons}")
+        elif prnu_ai_score > 0.4:  # Moderate forensic indicators
+            corrected_prob = 0.4 * ensemble_prob + 0.6 * prnu_ai_score
+            print(f"⚠️ MODERATE AI INDICATORS: Forensic score {prnu_ai_score:.2f}, reasons: {prnu_reasons}")
+        elif prnu_ai_score > 0.2:  # Weak forensic indicators
             corrected_prob = 0.6 * ensemble_prob + 0.4 * prnu_ai_score
-        else:  # Weak manual indicators
+        else:  # No clear forensic indicators
             corrected_prob = 0.8 * ensemble_prob + 0.2 * prnu_ai_score
         
         return corrected_prob * 100  # Convert to percentage

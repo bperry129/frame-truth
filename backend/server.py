@@ -2360,15 +2360,90 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             else:
                 evidence_result = scorer.analyze_video_evidence_based(features_dict)
             
-            # Update analysis result with evidence-based predictions
-            analysis_result['isAi'] = evidence_result['verdict'] in ['AI Generated', 'Likely AI']
-            analysis_result['confidence'] = min(95, max(evidence_result['ai_probability'], analysis_result.get('confidence', 50)))
-            analysis_result['curvatureScore'] = evidence_result['ai_probability']
+            # 🚨 CRITICAL FIX: MASTER DECISION OVERRIDE SYSTEM
+            # Don't let ML model override clear visual evidence of AI generation
             
-            # Add evidence-based reasoning
-            analysis_result['reasoning'].insert(0, f"🤖 Evidence-Based ML Analysis: {evidence_result['ai_probability']:.1f}% AI probability")
-            analysis_result['reasoning'].insert(1, f"📊 Model: {evidence_result['analysis_method']} (trained on {evidence_result['training_data']})")
-            analysis_result['reasoning'].insert(2, f"🎯 Verdict: {evidence_result['verdict']} ({evidence_result['confidence']} confidence)")
+            # Extract key indicators from Gemini analysis
+            gemini_detected_ai_model = analysis_result.get('modelDetected', '').lower()
+            gemini_is_ai = analysis_result.get('isAi', False)
+            gemini_curvature = analysis_result.get('curvatureScore', 0)
+            gemini_confidence = analysis_result.get('confidence', 0)
+            
+            # Check for DEFINITIVE AI indicators that should override ML model
+            definitive_ai_indicators = []
+            override_to_ai = False
+            
+            # 1. AI Model Detection (STRONGEST SIGNAL)
+            ai_models = ['sora', 'runway', 'kling', 'pika', 'midjourney', 'stable diffusion', 'gen-3', 'gen-2', 'luma', 'haiper']
+            if any(model in gemini_detected_ai_model for model in ai_models):
+                definitive_ai_indicators.append(f"AI model detected: {gemini_detected_ai_model}")
+                override_to_ai = True
+                print(f"🚨 DEFINITIVE AI INDICATOR: Model detected as {gemini_detected_ai_model}")
+            
+            # 2. Metadata AI Keywords (VERY STRONG SIGNAL)
+            if metadata_scan['has_ai_keywords']:
+                definitive_ai_indicators.append(f"AI keywords in metadata: {metadata_scan['keywords_found']}")
+                override_to_ai = True
+                print(f"🚨 DEFINITIVE AI INDICATOR: AI keywords found: {metadata_scan['keywords_found']}")
+            
+            # 3. Extreme Visual Anomalies (STRONG SIGNAL)
+            if gemini_curvature > 80 and gemini_confidence > 70:
+                definitive_ai_indicators.append(f"Extreme visual anomalies (curvature: {gemini_curvature}, confidence: {gemini_confidence})")
+                override_to_ai = True
+                print(f"🚨 DEFINITIVE AI INDICATOR: Extreme visual anomalies detected")
+            
+            # 4. High Trajectory Curvature (STRONG SIGNAL)
+            if trajectory_metrics and trajectory_metrics['mean_curvature'] > 120:
+                definitive_ai_indicators.append(f"Extreme trajectory curvature: {trajectory_metrics['mean_curvature']:.1f}°")
+                override_to_ai = True
+                print(f"🚨 DEFINITIVE AI INDICATOR: Extreme trajectory curvature: {trajectory_metrics['mean_curvature']:.1f}°")
+            
+            # 5. Multiple Strong Forensic Signals
+            strong_signals = 0
+            if trajectory_boost['has_prnu_anomalies']:
+                strong_signals += 1
+            if trajectory_boost['has_flow_anomalies']:
+                strong_signals += 1
+            if trajectory_boost['has_text_anomalies']:
+                strong_signals += 1
+            if trajectory_boost['has_high_curvature']:
+                strong_signals += 1
+            
+            if strong_signals >= 3:
+                definitive_ai_indicators.append(f"Multiple forensic anomalies detected ({strong_signals}/4)")
+                override_to_ai = True
+                print(f"🚨 DEFINITIVE AI INDICATOR: Multiple forensic anomalies ({strong_signals}/4)")
+            
+            # APPLY OVERRIDE LOGIC
+            if override_to_ai and evidence_result['ai_probability'] < 60:
+                print(f"🚨 MASTER OVERRIDE: ML model says {evidence_result['ai_probability']:.1f}% AI, but definitive indicators detected!")
+                print(f"   Definitive indicators: {definitive_ai_indicators}")
+                
+                # Override the ML decision
+                override_probability = max(75, gemini_curvature, evidence_result['ai_probability'] + 50)
+                override_probability = min(95, override_probability)  # Cap at 95%
+                
+                analysis_result['isAi'] = True
+                analysis_result['confidence'] = min(95, max(80, gemini_confidence))
+                analysis_result['curvatureScore'] = override_probability
+                
+                # Update reasoning to explain the override
+                analysis_result['reasoning'].insert(0, f"🚨 MASTER OVERRIDE: Despite ML model showing {evidence_result['ai_probability']:.1f}% AI probability, definitive AI indicators detected")
+                analysis_result['reasoning'].insert(1, f"🎯 Override Decision: AI Generated ({override_probability:.1f}% confidence)")
+                analysis_result['reasoning'].insert(2, f"🔍 Definitive Indicators: {'; '.join(definitive_ai_indicators[:2])}")
+                
+                print(f"🚨 OVERRIDE APPLIED: Final decision = AI Generated ({override_probability:.1f}%)")
+                
+            else:
+                # No override needed - use ML model results
+                analysis_result['isAi'] = evidence_result['verdict'] in ['AI Generated', 'Likely AI']
+                analysis_result['confidence'] = min(95, max(evidence_result['ai_probability'], analysis_result.get('confidence', 50)))
+                analysis_result['curvatureScore'] = evidence_result['ai_probability']
+                
+                # Add evidence-based reasoning
+                analysis_result['reasoning'].insert(0, f"🤖 Evidence-Based ML Analysis: {evidence_result['ai_probability']:.1f}% AI probability")
+                analysis_result['reasoning'].insert(1, f"📊 Model: {evidence_result['analysis_method']} (trained on {evidence_result['training_data']})")
+                analysis_result['reasoning'].insert(2, f"🎯 Verdict: {evidence_result['verdict']} ({evidence_result['confidence']} confidence)")
             
             # Add top contributing features
             if evidence_result['top_contributors']:
