@@ -1006,11 +1006,18 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
         
         print(f"📥 Downloading from unified API: {download_url[:100]}...")
         
-        # Download the video with proper headers
+        # Download the video with YouTube-compatible headers
         video_response = requests.get(download_url, stream=True, timeout=120, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Referer': 'https://download-all-in-one-elite.p.rapidapi.com/',
-            'Accept': '*/*'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'video',
+            'Sec-Fetch-Mode': 'no-cors',
+            'Sec-Fetch-Site': 'cross-site'
         })
         video_response.raise_for_status()
         
