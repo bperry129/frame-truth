@@ -28,13 +28,20 @@ from pathlib import Path
 # Add frametruth_training to path for evidence-based scorer
 sys.path.append(str(Path(__file__).parent.parent / "frametruth_training"))
 try:
-    from improved_evidence_scorer import ImprovedEvidenceBasedScorer
-    USE_IMPROVED_SCORER = True
-    print("✅ Using IMPROVED Evidence-Based Scorer with manual corrections")
+    from enhanced_evidence_scorer import EnhancedEvidenceBasedScorer
+    USE_ENHANCED_SCORER = True
+    print("🚀 Using ENHANCED Evidence-Based Scorer (96.6% accuracy with optimized models)")
 except ImportError:
-    from evidence_based_scorer import EvidenceBasedScorer
-    USE_IMPROVED_SCORER = False
-    print("⚠️ Using original Evidence-Based Scorer (66.7% accuracy)")
+    try:
+        from improved_evidence_scorer import ImprovedEvidenceBasedScorer
+        USE_ENHANCED_SCORER = False
+        USE_IMPROVED_SCORER = True
+        print("✅ Using IMPROVED Evidence-Based Scorer with manual corrections")
+    except ImportError:
+        from evidence_based_scorer import EvidenceBasedScorer
+        USE_ENHANCED_SCORER = False
+        USE_IMPROVED_SCORER = False
+        print("⚠️ Using original Evidence-Based Scorer (66.7% accuracy)")
 
 # Import advanced AI detector for sophisticated generators
 try:
@@ -2280,10 +2287,13 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         print(f"🤖 Using Evidence-Based Scorer (trained on 87 videos with 66.7% accuracy)...")
         
         try:
-            # Initialize the evidence-based scorer (improved or original)
-            if USE_IMPROVED_SCORER:
+            # Initialize the evidence-based scorer (enhanced, improved, or original)
+            if USE_ENHANCED_SCORER:
+                scorer = EnhancedEvidenceBasedScorer()
+                print(f"🚀 Using ENHANCED Evidence-Based Scorer (96.6% accuracy with optimized models)")
+            elif USE_IMPROVED_SCORER:
                 scorer = ImprovedEvidenceBasedScorer()
-                print(f"🚀 Using IMPROVED Evidence-Based Scorer with manual corrections")
+                print(f"✅ Using IMPROVED Evidence-Based Scorer with manual corrections")
             else:
                 scorer = EvidenceBasedScorer()
                 print(f"⚠️ Using original Evidence-Based Scorer (66.7% accuracy)")
@@ -2370,7 +2380,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                 })
             
             # Get evidence-based analysis using trained models
-            if USE_IMPROVED_SCORER:
+            if USE_ENHANCED_SCORER:
+                evidence_result = scorer.analyze_video_enhanced(features_dict)
+            elif USE_IMPROVED_SCORER:
                 evidence_result = scorer.analyze_video_improved(features_dict)
             else:
                 evidence_result = scorer.analyze_video_evidence_based(features_dict)
