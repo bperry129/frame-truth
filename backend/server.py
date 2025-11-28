@@ -1554,16 +1554,19 @@ async def download_video(request: DownloadRequest):
                 'file_access_retries': 10,
                 # Network resilience
                 'socket_timeout': 30,  # Shorter timeout for faster fallback
-                # Advanced extractor arguments
+                # Advanced extractor arguments - DNS FIX
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['ios', 'android', 'web', 'tv'],  # Add TV client
                         'skip': ['dash', 'hls'],
                         'player_skip': ['configs'],
-                        'innertube_host': 'youtubei.googleapis.com',  # Use official API host
+                        # CRITICAL FIX: Remove innertube_host to avoid DNS resolution issues
+                        # 'innertube_host': 'youtubei.googleapis.com',  # Commented out - causes DNS failures
                         'innertube_key': None,  # Let yt-dlp handle key
                     }
                 },
+                # DNS RESOLUTION FIX: Add custom DNS settings
+                'source_address': '0.0.0.0',  # Bind to all interfaces
                 # Rotate user agents to appear more human
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
