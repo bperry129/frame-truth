@@ -1542,27 +1542,44 @@ async def download_video(request: DownloadRequest):
             })
             print(f"🌐 Generic platform detected - using universal settings")
         
-        # ENHANCED: Skip cookies entirely for YouTube to avoid bot detection
-        # Modern YouTube heavily restricts cookie-based access from servers
+        # ENHANCED: Advanced YouTube bot detection bypass
         if is_youtube:
-            print(f"🎥 YouTube detected - using cookieless approach to avoid bot detection")
-            # Add additional anti-detection measures
+            print(f"🎥 YouTube detected - using advanced anti-detection measures")
+            # Use multiple strategies to bypass bot detection
             ydl_opts.update({
-                'sleep_interval': 3,  # Longer sleep to appear more human
-                'max_sleep_interval': 15,
-                'retries': 20,  # More retries
-                'fragment_retries': 20,
-                'file_access_retries': 15,
-                # Use more realistic user agent rotation
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
+                'sleep_interval': 5,  # Even longer sleep
+                'max_sleep_interval': 20,
+                'retries': 25,  # More retries
+                'fragment_retries': 25,
+                'file_access_retries': 20,
+                # Advanced extractor arguments
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'android', 'web', 'tv'],  # Add TV client
+                        'skip': ['dash', 'hls'],
+                        'player_skip': ['configs'],
+                        'innertube_host': 'youtubei.googleapis.com',  # Use official API host
+                        'innertube_key': None,  # Let yt-dlp handle key
+                    }
                 },
+                # Rotate user agents to appear more human
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                    'Sec-Fetch-Dest': 'video',
+                    'Sec-Fetch-Mode': 'no-cors',
+                    'Sec-Fetch-Site': 'cross-site',
+                },
+                # Additional anti-detection measures
+                'format': 'worst[height<=480]/worst',  # Use lower quality to reduce suspicion
+                'writesubtitles': False,
+                'writeautomaticsub': False,
+                'writedescription': False,
+                'writeinfojson': False,
+                'writethumbnail': False,
             })
         else:
             print(f"📱 Non-YouTube platform detected - using standard settings")
