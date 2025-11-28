@@ -2464,9 +2464,40 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                 override_to_ai = True
                 print(f"🚨 DEFINITIVE AI INDICATOR: Multiple forensic anomalies ({strong_signals}/4)")
             
-            # APPLY OVERRIDE LOGIC
-            if override_to_ai and evidence_result['ai_probability'] < 60:
-                print(f"🚨 MASTER OVERRIDE: ML model says {evidence_result['ai_probability']:.1f}% AI, but definitive indicators detected!")
+            # 🚀 EVIDENCE-BASED HIERARCHY: PRNU ANALYSIS TAKES PRIORITY
+            
+            # Check for DEFINITIVE REAL CAMERA evidence (PRNU sensor fingerprint)
+            definitive_real_camera = False
+            if prnu_metrics:
+                prnu_mean_corr = prnu_metrics['prnu_mean_corr']
+                prnu_consistency = prnu_metrics['prnu_consistency_score']
+                prnu_positive_ratio = prnu_metrics['prnu_positive_ratio']
+                
+                # DEFINITIVE real camera: High correlation + high consistency + high positive ratio
+                if prnu_mean_corr > 0.7 and prnu_consistency > 0.8 and prnu_positive_ratio > 0.8:
+                    definitive_real_camera = True
+                    print(f"🔬 DEFINITIVE REAL CAMERA: PRNU correlation={prnu_mean_corr:.3f}, consistency={prnu_consistency:.3f}")
+                    print(f"   This is physical sensor evidence that cannot be replicated by AI")
+            
+            # TIER 1: PRNU DEFINITIVE REAL CAMERA (HIGHEST PRIORITY)
+            if definitive_real_camera:
+                print(f"🎯 PRNU OVERRIDE: Definitive real camera detected - overriding all other analysis")
+                
+                analysis_result['isAi'] = False
+                analysis_result['confidence'] = 95  # Very high confidence for definitive physical evidence
+                analysis_result['curvatureScore'] = max(10, min(30, 100 - int(prnu_mean_corr * 100)))  # Low score for real camera
+                analysis_result['modelDetected'] = "Real Camera"
+                
+                # Update reasoning to explain the PRNU override
+                analysis_result['reasoning'].insert(0, f"🔬 PRNU SENSOR FINGERPRINT: Definitive real camera detected (correlation={prnu_mean_corr:.3f})")
+                analysis_result['reasoning'].insert(1, f"🎯 Physical Evidence: Camera sensor 'DNA' cannot be replicated by current AI technology")
+                analysis_result['reasoning'].insert(2, f"📊 Override Decision: Real Camera (95% confidence based on sensor fingerprint)")
+                
+                print(f"🔬 PRNU OVERRIDE APPLIED: Final decision = Real Camera (95% confidence)")
+                
+            # TIER 2: AI OVERRIDE LOGIC (when no definitive real camera evidence)
+            elif override_to_ai and evidence_result['ai_probability'] < 60:
+                print(f"🚨 AI OVERRIDE: ML model says {evidence_result['ai_probability']:.1f}% AI, but definitive AI indicators detected!")
                 print(f"   Definitive indicators: {definitive_ai_indicators}")
                 
                 # Override the ML decision
@@ -2478,12 +2509,13 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                 analysis_result['curvatureScore'] = override_probability
                 
                 # Update reasoning to explain the override
-                analysis_result['reasoning'].insert(0, f"🚨 MASTER OVERRIDE: Despite ML model showing {evidence_result['ai_probability']:.1f}% AI probability, definitive AI indicators detected")
+                analysis_result['reasoning'].insert(0, f"🚨 AI OVERRIDE: Despite ML model showing {evidence_result['ai_probability']:.1f}% AI probability, definitive AI indicators detected")
                 analysis_result['reasoning'].insert(1, f"🎯 Override Decision: AI Generated ({override_probability:.1f}% confidence)")
                 analysis_result['reasoning'].insert(2, f"🔍 Definitive Indicators: {'; '.join(definitive_ai_indicators[:2])}")
                 
-                print(f"🚨 OVERRIDE APPLIED: Final decision = AI Generated ({override_probability:.1f}%)")
+                print(f"🚨 AI OVERRIDE APPLIED: Final decision = AI Generated ({override_probability:.1f}%)")
                 
+            # TIER 3: STANDARD ML MODEL RESULTS (when no overrides needed)
             else:
                 # No override needed - use ML model results
                 analysis_result['isAi'] = evidence_result['verdict'] in ['AI Generated', 'Likely AI']
@@ -2512,43 +2544,33 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
             print(f"   Falling back to Gemini analysis only")
             # Keep original Gemini analysis result
 
-        # 14. 🚀 ADVANCED AI DETECTOR FOR SOPHISTICATED GENERATORS
+        # 14. 🔬 ADVANCED AI DETECTOR (ADVISORY ONLY - NO OVERRIDE AUTHORITY)
+        advanced_ai_insights = None
         if USE_ADVANCED_DETECTOR:
-            print(f"🔬 Running Advanced AI Detector for sophisticated generators...")
+            print(f"🔬 Running Advanced AI Detector (advisory only)...")
             try:
                 advanced_detector = AdvancedAIDetector()
                 advanced_result = advanced_detector.analyze_advanced_ai(filepath, features_dict)
                 
-                if advanced_result['advanced_ai_probability'] > 50:
-                    print(f"🚨 ADVANCED AI DETECTED: {advanced_result['advanced_ai_probability']:.1f}% probability")
-                    print(f"   Likely Generator: {advanced_result['likely_generator']}")
-                    print(f"   Detection Signals: {len(advanced_result['detection_signals'])}")
-                    
-                    # Apply advanced detection override if high confidence
-                    if advanced_result['confidence_level'] in ['medium', 'high'] and advanced_result['advanced_ai_probability'] > 60:
-                        print(f"🚨 ADVANCED OVERRIDE: Sophisticated AI detected with {advanced_result['confidence_level']} confidence")
-                        
-                        # Override the decision
-                        analysis_result['isAi'] = True
-                        analysis_result['confidence'] = min(95, max(75, advanced_result['advanced_ai_probability']))
-                        analysis_result['curvatureScore'] = advanced_result['advanced_ai_probability']
-                        analysis_result['modelDetected'] = advanced_result['likely_generator']
-                        
-                        # Update reasoning to explain the advanced detection
-                        analysis_result['reasoning'].insert(0, f"🔬 ADVANCED AI DETECTION: {advanced_result['advanced_ai_probability']:.1f}% probability of sophisticated AI generation")
-                        analysis_result['reasoning'].insert(1, f"🎯 Likely Generator: {advanced_result['likely_generator']}")
-                        
-                        # Add detection signals to reasoning
-                        if advanced_result['detection_signals']:
-                            signal_descriptions = []
-                            for signal in advanced_result['detection_signals'][:2]:  # Top 2 signals
-                                signal_descriptions.append(f"{signal['reason']} ({signal['strength']})")
-                            analysis_result['reasoning'].insert(2, f"🔍 Key Signals: {'; '.join(signal_descriptions)}")
-                        
-                        print(f"🚨 ADVANCED OVERRIDE APPLIED: Final decision = AI Generated ({advanced_result['advanced_ai_probability']:.1f}%)")
+                # Store insights for logging but DO NOT override other analysis
+                advanced_ai_insights = {
+                    'probability': advanced_result['advanced_ai_probability'],
+                    'generator': advanced_result['likely_generator'],
+                    'signals': advanced_result['detection_signals'],
+                    'confidence_level': advanced_result['confidence_level']
+                }
                 
+                if advanced_result['advanced_ai_probability'] > 50:
+                    print(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% probability")
+                    print(f"   Suggested Generator: {advanced_result['likely_generator']}")
+                    print(f"   Detection Signals: {len(advanced_result['detection_signals'])}")
+                    print(f"   ⚠️ NOTE: This is advisory only and will NOT override other analysis")
                 else:
-                    print(f"✓ Advanced AI Detector: {advanced_result['advanced_ai_probability']:.1f}% AI probability (below threshold)")
+                    print(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% AI probability (below threshold)")
+                
+                # Add advisory information to reasoning (but don't change decision)
+                if advanced_result['advanced_ai_probability'] > 70:
+                    analysis_result['reasoning'].append(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% probability of {advanced_result['likely_generator']}")
                     
             except Exception as e:
                 print(f"⚠️ Advanced AI Detector failed: {e}")
