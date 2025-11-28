@@ -1732,15 +1732,15 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # SIMPLIFIED: Just extract frames for LLM analysis
+        # SIMPLIFIED: Just extract frames for LLM analysis (max 10 for NVIDIA Nemotron limit)
         if duration < 30:
-            num_frames = 8   # Short clips
+            num_frames = 6   # Short clips
             print(f"📹 Short video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         elif duration < 60:
-            num_frames = 10  # Medium videos
+            num_frames = 8   # Medium videos
             print(f"📹 Medium video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         else:
-            num_frames = 12  # Longer videos
+            num_frames = 10  # Longer videos (max limit for NVIDIA Nemotron)
             print(f"📹 Long video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         
         # 4. Extract Frames for LLM Analysis
