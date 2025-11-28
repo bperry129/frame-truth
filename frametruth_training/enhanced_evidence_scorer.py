@@ -29,8 +29,29 @@ class EnhancedEvidenceBasedScorer:
     """Enhanced evidence-based scorer using optimized models with 96.6% accuracy"""
     
     def __init__(self):
-        self.models_dir = Path(__file__).parent.parent / "models"
+        # CRITICAL FIX: Check multiple possible model locations
+        possible_model_dirs = [
+            Path(__file__).parent.parent / "models",  # Original path
+            Path(__file__).parent / "models",         # Same directory
+            Path("models"),                           # Current working directory
+            Path("frametruth_training/models"),      # Relative to project root
+        ]
+        
+        self.models_dir = None
         self.model_version = "v2_practical_enhanced"
+        
+        # Find the correct models directory
+        for models_dir in possible_model_dirs:
+            test_file = models_dir / f"optimized_random_forest_{self.model_version}.pkl"
+            if test_file.exists():
+                self.models_dir = models_dir
+                print(f"✅ Found models directory: {self.models_dir}")
+                break
+        
+        if self.models_dir is None:
+            print(f"❌ Could not find models directory. Searched:")
+            for dir_path in possible_model_dirs:
+                print(f"   - {dir_path} (exists: {dir_path.exists()})")
         
         # Load optimized models and thresholds
         self.random_forest = None
