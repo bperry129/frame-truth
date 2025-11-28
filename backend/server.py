@@ -1542,16 +1542,18 @@ async def download_video(request: DownloadRequest):
             })
             print(f"🌐 Generic platform detected - using universal settings")
         
-        # ENHANCED: Advanced YouTube bot detection bypass
+        # ENHANCED: Advanced YouTube bot detection bypass + Network resilience
         if is_youtube:
             print(f"🎥 YouTube detected - using advanced anti-detection measures")
             # Use multiple strategies to bypass bot detection
             ydl_opts.update({
-                'sleep_interval': 5,  # Even longer sleep
-                'max_sleep_interval': 20,
-                'retries': 25,  # More retries
-                'fragment_retries': 25,
-                'file_access_retries': 20,
+                'sleep_interval': 3,  # Reduced for faster fallback
+                'max_sleep_interval': 15,
+                'retries': 15,  # Reduced for faster fallback to unified API
+                'fragment_retries': 15,
+                'file_access_retries': 10,
+                # Network resilience
+                'socket_timeout': 30,  # Shorter timeout for faster fallback
                 # Advanced extractor arguments
                 'extractor_args': {
                     'youtube': {
