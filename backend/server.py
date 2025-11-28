@@ -1732,541 +1732,62 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         duration = total_frames / fps if fps > 0 else 30
         cap.release()
         
-        # EXTREME PERFORMANCE OPTIMIZATION: Minimal processing for sub-2-minute analysis
+        # SIMPLIFIED: Just extract frames for LLM analysis
         if duration < 30:
-            num_frames = 5   # Very short clips (was 8)
-            dinov2_samples = 3  # (was 6)
-            print(f"📹 Short video ({duration:.1f}s) - using 5 frames (extreme speed optimization)")
+            num_frames = 8   # Short clips
+            print(f"📹 Short video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         elif duration < 60:
-            num_frames = 6  # Medium videos (was 10)
-            dinov2_samples = 3  # (was 6)
-            print(f"📹 Medium video ({duration:.1f}s) - using 6 frames (extreme speed optimization)")
+            num_frames = 10  # Medium videos
+            print(f"📹 Medium video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         else:
-            num_frames = 8  # Longer videos (was 12)
-            dinov2_samples = 4  # (was 8)
-            print(f"📹 Long video ({duration:.1f}s) - using 8 frames (extreme speed optimization)")
+            num_frames = 12  # Longer videos
+            print(f"📹 Long video ({duration:.1f}s) - using {num_frames} frames for LLM analysis")
         
-        # 4. 🚀 GAME-CHANGING ADDITION: PRNU Sensor Fingerprint Analysis
-        print(f"🔬 PRNU Sensor Fingerprint Analysis: extracting camera 'DNA' from video...")
-        prnu_metrics = calculate_prnu_sensor_fingerprint(filepath, num_samples=max(8, dinov2_samples*2))
-        
-        # 5. CPU-OPTIMIZED ANALYSIS: Re-enable advanced components with speed optimizations
-        print(f"🔧 CPU-OPTIMIZED MODE: Re-enabling advanced analysis with speed optimizations")
-        
-        # Re-enable with aggressive optimizations for speed
-        print(f"📐 Calculating lightweight trajectory metrics ({max(4, dinov2_samples)} samples)...")
-        trajectory_metrics = calculate_lightweight_trajectory_metrics(filepath, num_samples=max(4, dinov2_samples))
-        
-        print(f"🌊 Calculating optical flow features ({max(2, dinov2_samples//2)} samples)...")
-        optical_flow_metrics = calculate_optical_flow_features(filepath, num_samples=max(2, dinov2_samples//2))
-        
-        print(f"📝 Analyzing text stability with OCR ({max(1, dinov2_samples//3)} samples)...")
-        ocr_metrics = analyze_text_stability(filepath, num_samples=max(1, dinov2_samples//3))
-        
-        # 🚀 ADD MISSING FEATURE EXTRACTORS FOR COMPLETE 36-FEATURE PIPELINE
-        print(f"🎵 Computing frequency domain features...")
-        # Extract frames for frequency analysis
-        cap = cv2.VideoCapture(filepath)
-        frames_for_freq = []
-        frame_count = 0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        step = max(1, total_frames // 4)  # Sample 4 frames
-        
-        while cap.isOpened() and len(frames_for_freq) < 4:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_count % step == 0:
-                frames_for_freq.append(frame)
-            frame_count += 1
-        cap.release()
-        
-        frequency_metrics = compute_frequency_features(frames_for_freq) if frames_for_freq else {}
-        
-        print(f"🔊 Computing noise/grain statistics...")
-        noise_metrics = compute_noise_features(frames_for_freq) if frames_for_freq else {}
-        
-        print(f"🎬 Computing codec/compression features...")
-        codec_metrics = compute_codec_features(filepath)
-        
-        print(f"📊 Computing metadata features...")
-        metadata_metrics = compute_metadata_features(filepath)
-        
-        print(f"🔧 Advanced analysis re-enabled with CPU optimizations for accuracy + speed balance")
-        
-        trajectory_boost = {'score_increase': 0, 'confidence_boost': 0, 'has_high_curvature': False, 'has_flow_anomalies': False, 'has_text_anomalies': False, 'has_prnu_anomalies': False}
-        
-        # 6. 🚀 ANALYZE PRNU SENSOR FINGERPRINT (GAME-CHANGING!)
-        if prnu_metrics:
-            prnu_mean_corr = prnu_metrics['prnu_mean_corr']
-            prnu_std_corr = prnu_metrics['prnu_std_corr']
-            prnu_positive_ratio = prnu_metrics['prnu_positive_ratio']
-            prnu_consistency_score = prnu_metrics['prnu_consistency_score']
-            
-            # Detect PRNU anomalies that indicate AI generation
-            prnu_anomaly_score = 0
-            prnu_reasons = []
-            
-            # 1. Low mean correlation (AI lacks consistent sensor fingerprint)
-            if prnu_mean_corr < 0.15:  # Real cameras typically > 0.2
-                prnu_anomaly_score += 50
-                prnu_reasons.append(f"Low sensor fingerprint correlation ({prnu_mean_corr:.3f})")
-                print(f"🚨 LOW SENSOR FINGERPRINT CORRELATION: {prnu_mean_corr:.3f} (AI lacks consistent camera sensor pattern)")
-            
-            # 2. High standard deviation (AI has inconsistent noise patterns)
-            if prnu_std_corr > 0.3:  # Real cameras typically < 0.2
-                prnu_anomaly_score += 40
-                prnu_reasons.append(f"High sensor noise inconsistency ({prnu_std_corr:.3f})")
-                print(f"🚨 HIGH SENSOR NOISE INCONSISTENCY: {prnu_std_corr:.3f} (AI has unstable noise patterns)")
-            
-            # 3. Low positive ratio (AI correlations often near zero or negative)
-            if prnu_positive_ratio < 0.6:  # Real cameras typically > 0.7
-                prnu_anomaly_score += 45
-                prnu_reasons.append(f"Low positive correlation ratio ({prnu_positive_ratio:.3f})")
-                print(f"🚨 LOW POSITIVE CORRELATION RATIO: {prnu_positive_ratio:.3f} (AI lacks stable sensor signature)")
-            
-            # 4. Low overall consistency score
-            if prnu_consistency_score < 0.3:  # Real cameras typically > 0.5
-                prnu_anomaly_score += 35
-                prnu_reasons.append(f"Low overall sensor consistency ({prnu_consistency_score:.3f})")
-                print(f"🚨 LOW SENSOR CONSISTENCY: {prnu_consistency_score:.3f} (AI lacks physical sensor characteristics)")
-            
-            # Apply PRNU boost if anomalies detected
-            if prnu_anomaly_score > 40:  # Significant PRNU anomalies
-                additional_score = min(70, prnu_anomaly_score)  # PRNU is extremely reliable
-                additional_confidence = min(40, prnu_anomaly_score // 2)
-                
-                trajectory_boost['score_increase'] += additional_score
-                trajectory_boost['confidence_boost'] += additional_confidence
-                trajectory_boost['has_prnu_anomalies'] = True
-                
-                print(f"🔬 PRNU SENSOR ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
-                print(f"   Anomalies: {', '.join(prnu_reasons)}")
-            else:
-                print(f"✓ Normal sensor fingerprint patterns: mean_corr={prnu_mean_corr:.3f}, consistency={prnu_consistency_score:.3f}")
-        else:
-            print(f"⚠️ PRNU analysis failed - sensor fingerprint analysis unavailable")
-        
-        # 7. Analyze trajectory curvature (existing logic)
-        if trajectory_metrics:
-            mean_curv = trajectory_metrics['mean_curvature']
-            curv_var = trajectory_metrics['curvature_variance']
-            mean_dist = trajectory_metrics['mean_distance']
-            
-            # BALANCED: Trajectory analysis provides important supporting evidence
-            # High curvature (>100°) is a significant AI indicator that should influence the decision
-            # But don't completely override visual analysis - work together
-            
-            if mean_curv > 130:  # EXTREMELY high - very strong AI indicator
-                trajectory_boost['score_increase'] += min(40, int((mean_curv - 130) * 2))  # Up to +40
-                trajectory_boost['confidence_boost'] += min(25, int((mean_curv - 130) * 1))  # Up to +25
-                trajectory_boost['has_high_curvature'] = True
-                print(f"🚨 EXTREMELY HIGH VISUAL CURVATURE: {mean_curv:.1f}° (very strong AI indicator)")
-            elif mean_curv > 110:  # High curvature - strong AI indicator
-                trajectory_boost['score_increase'] += min(30, int((mean_curv - 110) * 1.5))  # Up to +30
-                trajectory_boost['confidence_boost'] += min(20, int((mean_curv - 110) * 1))  # Up to +20
-                trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ HIGH VISUAL CURVATURE: {mean_curv:.1f}° (strong AI indicator - modern AI often shows this pattern)")
-            elif mean_curv > 90:  # Moderate-high curvature - possible AI indicator
-                trajectory_boost['score_increase'] += min(20, int((mean_curv - 90) * 1))  # Up to +20
-                trajectory_boost['confidence_boost'] += min(15, int((mean_curv - 90) * 0.75))  # Up to +15
-                trajectory_boost['has_high_curvature'] = True
-                print(f"⚠️ MODERATE-HIGH VISUAL CURVATURE: {mean_curv:.1f}° (possible AI indicator)")
-            elif mean_curv > 70:  # Moderate curvature - minor AI indicator
-                trajectory_boost['score_increase'] += min(10, int((mean_curv - 70) * 0.5))  # Up to +10
-                trajectory_boost['confidence_boost'] += min(5, int((mean_curv - 70) * 0.25))  # Up to +5
-                trajectory_boost['has_high_curvature'] = True
-                print(f"ℹ️ MODERATE VISUAL CURVATURE: {mean_curv:.1f}° (could be AI or dynamic camera movement)")
-            else:
-                print(f"✓ Normal visual curvature: {mean_curv:.1f}° (typical for real video)")
-        
-        # 8. Analyze optical flow anomalies
-        if optical_flow_metrics:
-            flow_mean = optical_flow_metrics['flow_global_mean']
-            flow_std = optical_flow_metrics['flow_global_std']
-            flow_jitter = optical_flow_metrics['flow_jitter_index']
-            bg_fg_ratio = optical_flow_metrics.get('background_vs_foreground_ratio', 0.0)
-            patch_variance = optical_flow_metrics.get('flow_patch_variance', 0.0)
-            
-            # Detect optical flow anomalies that indicate AI generation
-            flow_anomaly_score = 0
-            flow_reasons = []
-            
-            # 1. Excessive flow jitter (AI often has micro-jitter)
-            if flow_jitter > 1.5:  # High jitter threshold
-                flow_anomaly_score += 25
-                flow_reasons.append(f"High temporal flow jitter ({flow_jitter:.2f})")
-                print(f"⚠️ HIGH FLOW JITTER: {flow_jitter:.2f} (AI often shows micro-jitter)")
-            
-            # 2. Unnatural background/foreground flow ratio
-            if bg_fg_ratio > 0.8:  # Background and foreground moving too similarly
-                flow_anomaly_score += 20
-                flow_reasons.append(f"Unnatural bg/fg flow ratio ({bg_fg_ratio:.2f})")
-                print(f"⚠️ UNNATURAL BG/FG FLOW: {bg_fg_ratio:.2f} (AI often moves bg/fg identically)")
-            
-            # 3. Excessive patch variance (inconsistent local motion)
-            if patch_variance > 0.3:  # High local motion inconsistency
-                flow_anomaly_score += 15
-                flow_reasons.append(f"High local motion inconsistency ({patch_variance:.2f})")
-                print(f"⚠️ HIGH PATCH VARIANCE: {patch_variance:.2f} (inconsistent local motion)")
-            
-            # 4. Too-perfect flow (unnaturally low variance)
-            if flow_std < 0.1 and flow_mean > 0.5:  # Suspiciously smooth motion
-                flow_anomaly_score += 15
-                flow_reasons.append(f"Unnaturally smooth motion (std: {flow_std:.2f})")
-                print(f"⚠️ TOO-SMOOTH MOTION: std={flow_std:.2f} (AI often too perfect)")
-            
-            # Apply optical flow boost if anomalies detected
-            if flow_anomaly_score > 20:  # Significant flow anomalies
-                additional_score = min(30, flow_anomaly_score)
-                additional_confidence = min(20, flow_anomaly_score // 2)
-                
-                trajectory_boost['score_increase'] += additional_score
-                trajectory_boost['confidence_boost'] += additional_confidence
-                trajectory_boost['has_flow_anomalies'] = True
-                
-                print(f"🌊 OPTICAL FLOW ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
-                print(f"   Anomalies: {', '.join(flow_reasons)}")
-            else:
-                print(f"✓ Normal optical flow patterns: jitter={flow_jitter:.2f}, bg/fg={bg_fg_ratio:.2f}")
-        
-        # 9. Analyze OCR text stability anomalies
-        if ocr_metrics and ocr_metrics['has_text']:
-            char_error_rate = ocr_metrics['ocr_char_error_rate']
-            frame_stability = ocr_metrics['ocr_frame_stability_score']
-            mutation_rate = ocr_metrics['ocr_text_mutation_rate']
-            unique_strings = ocr_metrics['ocr_unique_string_count']
-            
-            # Detect text anomalies that indicate AI generation
-            text_anomaly_score = 0
-            text_reasons = []
-            
-            # 1. High character error rate (weird glyphs, non-ASCII)
-            if char_error_rate > 0.1:  # >10% character errors
-                text_anomaly_score += 40
-                text_reasons.append(f"High character error rate ({char_error_rate:.2f})")
-                print(f"⚠️ HIGH CHARACTER ERROR RATE: {char_error_rate:.2f} (AI often has weird glyphs)")
-            
-            # 2. Low frame stability (text morphing between frames)
-            if frame_stability < 0.7:  # <70% stability
-                text_anomaly_score += 35
-                text_reasons.append(f"Low text frame stability ({frame_stability:.2f})")
-                print(f"⚠️ LOW TEXT STABILITY: {frame_stability:.2f} (AI text often morphs)")
-            
-            # 3. High mutation rate (text changing too often)
-            if mutation_rate > 0.3:  # >30% mutation rate
-                text_anomaly_score += 30
-                text_reasons.append(f"High text mutation rate ({mutation_rate:.2f})")
-                print(f"⚠️ HIGH TEXT MUTATION: {mutation_rate:.2f} (AI text changes unnaturally)")
-            
-            # 4. Too many unique strings (inconsistent text)
-            if unique_strings > 10:  # Too many different text strings
-                text_anomaly_score += 20
-                text_reasons.append(f"Too many unique text strings ({unique_strings})")
-                print(f"⚠️ TOO MANY TEXT VARIANTS: {unique_strings} (AI often inconsistent)")
-            
-            # Apply OCR boost if anomalies detected
-            if text_anomaly_score > 25:  # Significant text anomalies
-                additional_score = min(50, text_anomaly_score)  # OCR is very reliable
-                additional_confidence = min(30, text_anomaly_score // 2)
-                
-                trajectory_boost['score_increase'] += additional_score
-                trajectory_boost['confidence_boost'] += additional_confidence
-                trajectory_boost['has_text_anomalies'] = True
-                
-                print(f"📝 TEXT ANOMALIES DETECTED: +{additional_score} score, +{additional_confidence} confidence")
-                print(f"   Anomalies: {', '.join(text_reasons)}")
-            else:
-                print(f"✓ Normal text patterns: stability={frame_stability:.2f}, mutation={mutation_rate:.2f}")
-        elif ocr_metrics and not ocr_metrics['has_text']:
-            print(f"ℹ️ No text detected in video - OCR analysis skipped")
-        else:
-            print(f"⚠️ OCR analysis failed - text analysis unavailable")
-        
-        # 10. Scan metadata for AI keywords (if URL provided)
-        metadata_scan = {'has_ai_keywords': False, 'keywords_found': [], 'confidence_boost': 0, 'score_increase': 0}
-        if data.original_url and data.original_url.strip():
-            print(f"🔍 Scanning metadata for AI keywords in URL: {data.original_url}")
-            metadata_scan = scan_metadata_for_ai_keywords(data.original_url)
-            if metadata_scan['has_ai_keywords']:
-                print(f"⚠️ AI KEYWORDS DETECTED: {metadata_scan['keywords_found']}")
-                print(f"   Score boost: +{metadata_scan['score_increase']}, Confidence boost: +{metadata_scan['confidence_boost']}")
-        
-        # 11. Extract Frames
+        # 4. Extract Frames for LLM Analysis
+        print(f"🖼️ Extracting frames for LLM analysis...")
         frames = extract_frames_base64(filepath, num_frames)
         if not frames:
              raise HTTPException(status_code=400, detail="Could not extract frames from video")
 
-        # 12. 🚀 ENHANCED GEMINI PROMPT WITH PRNU CONTEXT
-        # Build structured numeric context from our analysis INCLUDING PRNU
-        numeric_context = {
-            "prnu_sensor_fingerprint": {
-                "prnu_mean_corr": prnu_metrics['prnu_mean_corr'] if prnu_metrics else 0.0,
-                "prnu_std_corr": prnu_metrics['prnu_std_corr'] if prnu_metrics else 0.0,
-                "prnu_positive_ratio": prnu_metrics['prnu_positive_ratio'] if prnu_metrics else 0.0,
-                "prnu_consistency_score": prnu_metrics['prnu_consistency_score'] if prnu_metrics else 0.0,
-                "method": prnu_metrics['method'] if prnu_metrics else "none"
-            },
-            "trajectory_analysis": {
-                "mean_curvature": trajectory_metrics['mean_curvature'] if trajectory_metrics else 0.0,
-                "curvature_variance": trajectory_metrics['curvature_variance'] if trajectory_metrics else 0.0,
-                "max_curvature": trajectory_metrics['max_curvature'] if trajectory_metrics else 0.0,
-                "mean_distance": trajectory_metrics['mean_distance'] if trajectory_metrics else 0.0,
-                "method": trajectory_metrics['method'] if trajectory_metrics else "none"
-            },
-            "optical_flow_analysis": {
-                "flow_global_mean": optical_flow_metrics['flow_global_mean'] if optical_flow_metrics else 0.0,
-                "flow_global_std": optical_flow_metrics['flow_global_std'] if optical_flow_metrics else 0.0,
-                "temporal_flow_jitter_index": optical_flow_metrics['flow_jitter_index'] if optical_flow_metrics else 0.0,
-                "background_vs_foreground_ratio": optical_flow_metrics.get('background_vs_foreground_ratio', 0.0) if optical_flow_metrics else 0.0,
-                "flow_patch_variance_mean": optical_flow_metrics.get('flow_patch_variance', 0.0) if optical_flow_metrics else 0.0,
-                "method": optical_flow_metrics['method'] if optical_flow_metrics else "none"
-            },
-            "ocr_text_analysis": {
-                "has_text": ocr_metrics['has_text'] if ocr_metrics else False,
-                "ocr_char_error_rate": ocr_metrics['ocr_char_error_rate'] if ocr_metrics else 0.0,
-                "ocr_frame_stability_score": ocr_metrics['ocr_frame_stability_score'] if ocr_metrics else 1.0,
-                "ocr_text_mutation_rate": ocr_metrics['ocr_text_mutation_rate'] if ocr_metrics else 0.0,
-                "ocr_unique_string_count": ocr_metrics['ocr_unique_string_count'] if ocr_metrics else 0,
-                "total_text_detections": ocr_metrics['total_text_detections'] if ocr_metrics else 0,
-                "method": ocr_metrics['method'] if ocr_metrics else "none"
-            },
-            "metadata_analysis": {
-                "has_ai_keywords": metadata_scan['has_ai_keywords'],
-                "keyword_count": len(metadata_scan['keywords_found']),
-                "keywords_found": metadata_scan['keywords_found'][:3]  # First 3 keywords
-            },
-            "video_properties": {
-                "duration_seconds": duration,
-                "frames_analyzed": num_frames,
-                "samples_used": dinov2_samples
-            }
-        }
+        # 5. Create Simple LLM Prompt for NVIDIA Nemotron
+        print(f"🤖 Using NVIDIA Nemotron for pure LLM analysis...")
         
-        # Create enhanced prompt with PRNU context
-        prompt = f"""
-    You are an EXPERT Video Forensics Analyst specializing in objective technical analysis of video authenticity. 
-    Your role is to provide NEUTRAL, UNBIASED analysis based solely on observable technical evidence.
+        prompt = """You are an expert AI video detection specialist. Analyze these video frames to determine if this video was generated by AI or captured with a real camera.
 
-    🔢 NUMERIC FORENSIC CONTEXT:
-    {json.dumps(numeric_context, indent=2)}
+Look for these key indicators:
 
-    📋 INTERPRETATION GUIDE:
-    
-    **🚀 PRNU Sensor Fingerprint Analysis (MOST RELIABLE SIGNAL):**
-    - prnu_mean_corr < 0.15: Strong AI indicator (lacks consistent sensor fingerprint)
-    - prnu_std_corr > 0.3: High noise inconsistency (AI artifact)
-    - prnu_positive_ratio < 0.6: Low correlation stability (AI lacks sensor signature)
-    - prnu_consistency_score < 0.3: Overall sensor inconsistency (AI lacks physical sensor)
-    
-    **Trajectory Analysis:**
-    - mean_curvature > 110°: Strong AI indicator (irregular frame transitions)
-    - curvature_variance > 500: High temporal inconsistency 
-    - max_curvature > 150°: Extreme motion artifacts
-    
-    **Optical Flow Analysis:**
-    - temporal_flow_jitter_index > 1.5: Micro-jitter (AI artifact)
-    - background_vs_foreground_ratio > 0.8: Unnatural motion coupling
-    - flow_patch_variance_mean > 0.3: Local motion inconsistency
-    - flow_global_std < 0.1 + flow_global_mean > 0.5: Too-perfect motion
-    
-    **OCR Text Analysis:**
-    - has_text=true: Text detected in video frames
-    - ocr_char_error_rate > 0.1: High rate of weird/non-ASCII characters (AI artifact)
-    - ocr_frame_stability_score < 0.7: Text morphing between frames (AI artifact)
-    - ocr_text_mutation_rate > 0.3: Text changing too frequently (AI artifact)
-    - ocr_unique_string_count > 10: Too many text variants (AI inconsistency)
-    
-    **Metadata Analysis:**
-    - has_ai_keywords=true: Video explicitly tagged as AI-generated
-    - keyword_count > 0: Contains AI-related terms in title/description
-    
-    🔍 ANALYSIS FRAMEWORK - Use numeric context as PRIMARY evidence, visual frames for CONFIRMATION:
+**AI Video Signs:**
+- Unnatural motion or physics violations
+- Inconsistent lighting or shadows
+- Objects that morph or change between frames
+- Text that looks distorted, blurry, or changes between frames
+- Faces or hands with anatomical issues
+- Too-perfect or unnaturally smooth motion
+- Backgrounds that shift or warp subtly
+- Textures that "boil" or fluctuate
+- Impossible camera movements
 
-    **CRITICAL INSTRUCTION: The PRNU sensor fingerprint analysis is the most reliable technical signal. If it shows strong AI indicators (low correlations, high inconsistency), this should heavily influence your decision. Use the visual frames to confirm and explain the patterns detected by the algorithms.**
-    
-    🔍 VISUAL ANALYSIS FRAMEWORK - Examine these sequential frames to confirm numeric findings:
+**Real Video Signs:**
+- Natural camera shake or stabilization
+- Consistent physics and lighting
+- Realistic motion blur
+- Stable text and objects across frames
+- Natural imperfections and grain
+- Realistic depth of field
+- Authentic camera artifacts
 
-    1. TEMPORAL COHERENCE ANALYSIS:
-       - Frame-to-frame consistency (natural vs. artificial transitions)
-       - Motion blur patterns (camera motion vs. synthetic blur)
-       - Lighting consistency across frames
-       - Object stability and position tracking
-       - Background element behavior
-       - **MICRO-GLITCHES**: Subtle warping, morphing, or "swimming" of textures between frames
-       - **TEMPORAL ARTIFACTS**: Objects or details that flicker, appear/disappear, or shift unnaturally
+Provide your analysis in this exact JSON format:
+{
+    "isAi": boolean,
+    "confidence": number (0-100),
+    "curvatureScore": number (0-100),
+    "distanceScore": number (0-100),
+    "reasoning": ["observation 1", "observation 2", "observation 3", "observation 4"],
+    "trajectoryData": [{"x": number, "y": number, "frame": number}],
+    "modelDetected": "Real Camera" or "Sora" or "Runway Gen-3" or "Unknown AI Model"
+}
 
-    2. PHYSICS & MOTION ANALYSIS:
-       - Gravity and momentum behavior (natural vs. impossible)
-       - Shadow direction, intensity, and consistency
-       - Reflection accuracy (mirrors, water, glass, metallic surfaces)
-       - Depth perception and occlusion correctness
-       - Material properties (weight, flexibility, rigidity)
-       - **MOTION SMOOTHNESS**: Too-perfect motion or floating/drifting movements
-       - **ACCELERATION**: Unnatural speed changes or momentum violations
-
-    3. VISUAL QUALITY INDICATORS:
-       - Texture consistency and detail stability
-       - Surface material rendering (natural vs. synthetic appearance)
-       - Facial features and proportions (natural vs. uncanny valley)
-       - Pattern regularity in organic elements
-       - Edge definition and boundary clarity
-       - **TEXTURE BOILING**: Fine details that seem to crawl, shimmer, or fluctuate
-       - **WATERCOLOR EFFECT**: Overly smooth, plastic-like, or painted appearance
-       - **EDGE COHERENCE**: Soft or bleeding edges around objects
-
-    4. OBJECT & SCENE CONSISTENCY:
-       - Object permanence through occlusion
-       - Detail consistency across frames (jewelry, buttons, text, features)
-       - Background stability and coherence
-       - Anatomical accuracy (hands, fingers, body proportions)
-       - Scene composition naturalness
-       - **ANATOMICAL TELLS**: Extra/missing fingers, impossible hand positions, morphing limbs
-       - **OBJECT MUTATIONS**: Items changing size, shape, or details between frames
-       - **BACKGROUND INSTABILITY**: Static elements that subtly shift or warp
-
-    5. TECHNICAL SIGNATURES (Observable Patterns):
-       - Camera artifacts (lens distortion, sensor noise, compression artifacts)
-       - Motion characteristics (handheld shake, stabilization, panning smoothness)
-       - Focus behavior (depth of field, bokeh, autofocus hunting)
-       - Color grading and dynamic range
-       - Temporal artifacts or glitches
-       - **SENSOR NOISE**: Real cameras have grain; AI videos often too clean or artificial grain
-       - **ROLLING SHUTTER**: Real cameras show this effect; AI often doesn't
-       - **CHROMATIC ABERRATION**: Real lenses have color fringing; check if present/absent
-
-    6. 🚨 TEXT/LETTER ANALYSIS (CRITICAL AI INDICATOR - HIGHEST PRIORITY):
-       
-       **⚠️ MANDATORY: Examine EVERY SINGLE piece of text visible in ANY frame**
-       **This is THE MOST RELIABLE indicator of AI - be EXTREMELY scrutinous**
-       
-       **Where to Look (check ALL of these):**
-       - Signs (street signs, store signs, airport signs, directional signs)
-       - Products (labels, packaging, bottles, cans)
-       - Screens (phones, computers, TVs, displays)
-       - Clothing (t-shirts, jerseys, brand names)
-       - Vehicles (license plates, logos, text on sides)
-       - Buildings (storefront names, addresses, posted notices)
-       - Documents (papers, books, magazines, newspapers)
-       - ANY other visible text
-       
-       **AI Text Detection - Be VERY Critical:**
-       
-       Even "mostly readable" text can be AI-generated. Look for:
-       
-       **Subtle AI Text Indicators (VERY COMMON in modern AI):**
-       - Letters that are **almost** correct but slightly off
-       - Text that looks "fuzzy" or "soft" even when in focus
-       - Spacing between letters that's inconsistent
-       - Letter heights that vary within the same word
-       - Serif/sans-serif mixing within same word
-       - Characters that look hand-drawn rather than printed
-       - Text that seems to "blend" into background slightly
-       - Words with correct letters but wrong/unusual spelling
-       - Real words but grammatically nonsensical combinations
-       - Font consistency issues (even subtle)
-       - Letters with unusual thickness variations
-       - Curved text that doesn't follow proper arc
-       - Shadowing/dimensionality that doesn't match lighting
-       
-       **CRITICAL: Modern AI (Sora, Runway Gen-3) can create VERY convincing text**
-       - Don't be fooled by text that looks "mostly good"
-       - AI text often looks 80-90% correct but has subtle issues
-       - Compare text across multiple frames - does it stay identical?
-       - Real printed text is PERFECTLY consistent across frames
-       - AI text often has MICRO-variations frame-to-frame
-       
-       **Frame-to-Frame Text Analysis (ESSENTIAL):**
-       - Does the EXACT same text look identical in consecutive frames?
-       - Do letter shapes subtly morph or shift?
-       - Does text clarity fluctuate even when camera is still?
-       - Do shadows/highlights on text change unnaturally?
-       
-       **IMPORTANT DISTINCTIONS:**
-       - ✅ Analyze text WITHIN the video (in-scene text)
-       - ❌ IGNORE user-added captions/subtitles
-       - ⚠️ "Readable text" does NOT mean video is real!
-       - ⚠️ AI can create readable text - look for SUBTLE issues
-       
-       **Scoring Impact (AGGRESSIVE):**
-       - ANY text inconsistencies → **+40-50 to curvatureScore**
-       - Gibberish/distorted text → **+60-70 to curvatureScore**
-       - Text morphing between frames → **+70-80 to curvatureScore**
-       - Multiple text issues → **+80-90 to curvatureScore, set isAi=true**
-       - Even subtle text problems should heavily influence your decision
-       
-       **⚠️ DEFAULT ASSUMPTION: If video has text, assume it's AI until proven otherwise**
-       - Real text is PERFECT and CONSISTENT
-       - Any imperfection in text is a RED FLAG
-       - Be skeptical, not generous
-
-    📊 SCORING METHODOLOGY (Evidence-Based):
-    
-    **curvatureScore (0-100)**: Based on combined technical analysis
-    - 0-30: Strong evidence of real camera with consistent sensor fingerprint
-    - 31-60: Mixed signals that could be either natural or synthetic
-    - 61-100: Clear technical evidence of AI generation (sensor inconsistency, motion artifacts, text issues)
-    
-    **distanceScore (0-100)**: Based on spatial consistency
-    - Measure consistency of object positions and spatial relationships
-    
-    **confidence (0-100)**: Your certainty in the classification
-    - Base this on the STRENGTH and QUANTITY of evidence observed
-    - PRNU sensor fingerprint analysis should heavily influence confidence
-    - Low confidence (0-40): Ambiguous or limited evidence
-    - Medium confidence (41-70): Some clear indicators present
-    - High confidence (71-100): Multiple strong, unambiguous indicators
-    
-    **isAi determination**: 
-    - Set to TRUE if PRNU analysis shows strong AI indicators OR multiple other strong signals
-    - Set to FALSE if PRNU shows consistent sensor fingerprint AND other signals support real camera
-    - Consider the TOTALITY of evidence, not individual anomalies
-    - Real-world videos can have compression artifacts, editing, and imperfections
-
-    Output STRICTLY in JSON format:
-    {{
-        "isAi": boolean,
-        "confidence": number (0-100),
-        "curvatureScore": number (0-100),
-        "distanceScore": number (0-100),
-        "reasoning": string[],
-        "trajectoryData": [{{"x": number, "y": number, "frame": number}}],
-        "modelDetected": string
-    }}
-
-    MANDATORY REQUIREMENTS:
-    1. "reasoning": List 4-6 specific OBJECTIVE observations based on what you see
-       - Describe actual visual evidence, not assumptions
-       - Note both indicators of AI AND indicators of real footage
-       - Be specific about frame numbers or sequences where relevant
-    
-    2. "trajectoryData": Generate 15-30 realistic coordinate points tracking motion
-       - Should correspond to actual movement patterns observed
-       - Points should reflect natural or unnatural trajectories observed
-    
-    3. "modelDetected": Identify based on EVIDENCE ONLY:
-       - If clearly AI-generated: Specify "Sora", "Runway Gen-3", "Pika", "Kling", or "Unknown AI Model"
-       - If appears authentic: "Real Camera"
-       - If uncertain: "Real Camera" (default to real when ambiguous)
-    
-    4. "isAi": Base decision on clear technical evidence
-       - Require MULTIPLE strong indicators, not single anomalies
-       - Consider that real videos can have: compression artifacts, motion blur, editing cuts, color grading
-       - Consider that real videos may have: shaky cam, autofocus hunting, lens flares, sensor noise
-    
-    5. "confidence": Reflect genuine uncertainty
-       - Don't artificially inflate confidence
-       - Lower confidence for ambiguous cases
-       - Higher confidence only when multiple clear indicators align
-
-    IMPORTANT PRINCIPLES:
-    - Remain NEUTRAL - do not assume AI or Real without evidence
-    - Real-world videos often have imperfections that are NOT signs of AI
-    - Professional videography can look very clean and still be real
-    - Animation and CGI are NOT the same as AI-generated deepfakes
-    - Base conclusions on TECHNICAL EVIDENCE, not aesthetic preferences
-    - When uncertain, acknowledge the uncertainty in your confidence score
-        """
+Be thorough but concise. Focus on observable evidence, not speculation."""
 
         content_parts = [{"type": "text", "text": prompt}]
         for frame in frames:
@@ -2283,7 +1804,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
                  "HTTP-Referer": "https://frametruth.com",
              },
              json={
-                 "model": "google/gemini-3-pro-preview",
+                 "model": "nvidia/nemotron-nano-12b-v2-vl:free",
                  "messages": [{"role": "user", "content": content_parts}],
                  "response_format": {"type": "json_object"}
              }
@@ -2295,7 +1816,7 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         ai_res = response.json()
         
         # Debug: Log the response structure
-        print(f"🔍 AI API Response keys: {list(ai_res.keys())}")
+        print(f"🔍 NVIDIA Nemotron Response keys: {list(ai_res.keys())}")
         if 'error' in ai_res:
             raise Exception(f"AI API Error: {ai_res['error']}")
         
@@ -2306,276 +1827,9 @@ async def analyze_video(request: Request, data: AnalyzeRequest):
         clean_content = content.replace("```json", "").replace("```", "").strip()
         analysis_result = json.loads(clean_content)
         
-        # 13. 🚀 EVIDENCE-BASED MACHINE LEARNING ANALYSIS
-        print(f"🤖 Using Evidence-Based Scorer (trained on 87 videos with 66.7% accuracy)...")
-        
-        try:
-            # Initialize the evidence-based scorer (enhanced, improved, or original)
-            if USE_ENHANCED_SCORER:
-                scorer = EnhancedEvidenceBasedScorer()
-                print(f"🚀 Using ENHANCED Evidence-Based Scorer (96.6% accuracy with optimized models)")
-            elif USE_IMPROVED_SCORER:
-                scorer = ImprovedEvidenceBasedScorer()
-                print(f"✅ Using IMPROVED Evidence-Based Scorer with manual corrections")
-            else:
-                scorer = EvidenceBasedScorer()
-                print(f"⚠️ Using original Evidence-Based Scorer (66.7% accuracy)")
-            
-            # Prepare features dictionary for the trained model
-            features_dict = {}
-            
-            # 🚀 ADD ALL 36 FEATURES TO MATCH TRAINING DATA EXACTLY
-            
-            # PRNU Sensor Fingerprint Features (4 features)
-            if prnu_metrics:
-                features_dict.update({
-                    'prnu_mean_corr': prnu_metrics['prnu_mean_corr'],
-                    'prnu_std_corr': prnu_metrics['prnu_std_corr']
-                })
-            
-            # Trajectory Analysis Features (4 features)
-            if trajectory_metrics:
-                features_dict.update({
-                    'trajectory_curvature_mean': trajectory_metrics['mean_curvature'],
-                    'trajectory_curvature_std': (trajectory_metrics['curvature_variance'] ** 0.5),
-                    'trajectory_max_curvature': trajectory_metrics['max_curvature'],
-                    'trajectory_mean_distance': trajectory_metrics['mean_distance']
-                })
-            
-            # Optical Flow Features (5 features)
-            if optical_flow_metrics:
-                features_dict.update({
-                    'flow_jitter_index': optical_flow_metrics['flow_jitter_index'],
-                    'flow_patch_variance': optical_flow_metrics['flow_patch_variance'],
-                    'flow_smoothness_score': optical_flow_metrics['flow_smoothness_score'],
-                    'flow_global_mean': optical_flow_metrics['flow_global_mean'],
-                    'flow_global_std': optical_flow_metrics['flow_global_std']
-                })
-            
-            # OCR Text Analysis Features (5 features)
-            if ocr_metrics:
-                features_dict.update({
-                    'ocr_frame_stability': ocr_metrics['ocr_frame_stability_score'],
-                    'ocr_mutation_rate': ocr_metrics['ocr_text_mutation_rate'],
-                    'ocr_unique_string_count': ocr_metrics['ocr_unique_string_count'],
-                    'ocr_total_detections': ocr_metrics['total_text_detections']
-                })
-            
-            # Frequency Domain Features (4 features)
-            if frequency_metrics:
-                features_dict.update({
-                    'freq_low_power_mean': frequency_metrics.get('freq_low_power_mean', 0.0),
-                    'freq_mid_power_mean': frequency_metrics.get('freq_mid_power_mean', 0.0),
-                    'freq_high_power_mean': frequency_metrics.get('freq_high_power_mean', 0.0),
-                    'freq_high_low_ratio_mean': frequency_metrics.get('freq_high_low_ratio_mean', 0.0)
-                })
-            
-            # Noise/Grain Statistics Features (6 features)
-            if noise_metrics:
-                features_dict.update({
-                    'noise_variance_r_mean': noise_metrics.get('noise_variance_r_mean', 0.0),
-                    'noise_variance_g_mean': noise_metrics.get('noise_variance_g_mean', 0.0),
-                    'noise_variance_b_mean': noise_metrics.get('noise_variance_b_mean', 0.0),
-                    'cross_channel_corr_rg_mean': noise_metrics.get('cross_channel_corr_rg_mean', 0.0),
-                    'spatial_autocorr_mean': noise_metrics.get('spatial_autocorr_mean', 0.0),
-                    'temporal_noise_consistency': noise_metrics.get('temporal_noise_consistency', 0.0)
-                })
-            
-            # Codec/Compression Features (7 features)
-            if codec_metrics:
-                features_dict.update({
-                    'avg_bitrate': codec_metrics.get('avg_bitrate', 0.0),
-                    'i_frame_ratio': codec_metrics.get('i_frame_ratio', 0.0),
-                    'p_frame_ratio': codec_metrics.get('p_frame_ratio', 0.0),
-                    'b_frame_ratio': codec_metrics.get('b_frame_ratio', 0.0),
-                    'gop_length_mean': codec_metrics.get('gop_length_mean', 0.0),
-                    'gop_length_std': codec_metrics.get('gop_length_std', 0.0),
-                    'double_compression_score': codec_metrics.get('double_compression_score', 0.0)
-                })
-            
-            # Metadata Features (4 features)
-            if metadata_metrics:
-                features_dict.update({
-                    'duration_seconds': metadata_metrics.get('duration_seconds', duration),
-                    'fps': metadata_metrics.get('fps', fps),
-                    'resolution_width': metadata_metrics.get('resolution_width', 0),
-                    'resolution_height': metadata_metrics.get('resolution_height', 0)
-                })
-            
-            # Get evidence-based analysis using trained models
-            if USE_ENHANCED_SCORER:
-                evidence_result = scorer.analyze_video_enhanced(features_dict)
-            elif USE_IMPROVED_SCORER:
-                evidence_result = scorer.analyze_video_improved(features_dict)
-            else:
-                evidence_result = scorer.analyze_video_evidence_based(features_dict)
-            
-            # 🚨 CRITICAL FIX: MASTER DECISION OVERRIDE SYSTEM
-            # Don't let ML model override clear visual evidence of AI generation
-            
-            # Extract key indicators from Gemini analysis
-            gemini_detected_ai_model = analysis_result.get('modelDetected', '').lower()
-            gemini_is_ai = analysis_result.get('isAi', False)
-            gemini_curvature = analysis_result.get('curvatureScore', 0)
-            gemini_confidence = analysis_result.get('confidence', 0)
-            
-            # Check for DEFINITIVE AI indicators that should override ML model
-            definitive_ai_indicators = []
-            override_to_ai = False
-            
-            # 1. AI Model Detection (STRONGEST SIGNAL)
-            ai_models = ['sora', 'runway', 'kling', 'pika', 'midjourney', 'stable diffusion', 'gen-3', 'gen-2', 'luma', 'haiper']
-            if any(model in gemini_detected_ai_model for model in ai_models):
-                definitive_ai_indicators.append(f"AI model detected: {gemini_detected_ai_model}")
-                override_to_ai = True
-                print(f"🚨 DEFINITIVE AI INDICATOR: Model detected as {gemini_detected_ai_model}")
-            
-            # 2. Metadata AI Keywords (VERY STRONG SIGNAL)
-            if metadata_scan['has_ai_keywords']:
-                definitive_ai_indicators.append(f"AI keywords in metadata: {metadata_scan['keywords_found']}")
-                override_to_ai = True
-                print(f"🚨 DEFINITIVE AI INDICATOR: AI keywords found: {metadata_scan['keywords_found']}")
-            
-            # 3. Extreme Visual Anomalies (STRONG SIGNAL)
-            if gemini_curvature > 80 and gemini_confidence > 70:
-                definitive_ai_indicators.append(f"Extreme visual anomalies (curvature: {gemini_curvature}, confidence: {gemini_confidence})")
-                override_to_ai = True
-                print(f"🚨 DEFINITIVE AI INDICATOR: Extreme visual anomalies detected")
-            
-            # 4. High Trajectory Curvature (STRONG SIGNAL)
-            if trajectory_metrics and trajectory_metrics['mean_curvature'] > 120:
-                definitive_ai_indicators.append(f"Extreme trajectory curvature: {trajectory_metrics['mean_curvature']:.1f}°")
-                override_to_ai = True
-                print(f"🚨 DEFINITIVE AI INDICATOR: Extreme trajectory curvature: {trajectory_metrics['mean_curvature']:.1f}°")
-            
-            # 5. Multiple Strong Forensic Signals
-            strong_signals = 0
-            if trajectory_boost['has_prnu_anomalies']:
-                strong_signals += 1
-            if trajectory_boost['has_flow_anomalies']:
-                strong_signals += 1
-            if trajectory_boost['has_text_anomalies']:
-                strong_signals += 1
-            if trajectory_boost['has_high_curvature']:
-                strong_signals += 1
-            
-            if strong_signals >= 3:
-                definitive_ai_indicators.append(f"Multiple forensic anomalies detected ({strong_signals}/4)")
-                override_to_ai = True
-                print(f"🚨 DEFINITIVE AI INDICATOR: Multiple forensic anomalies ({strong_signals}/4)")
-            
-            # 🚀 EVIDENCE-BASED HIERARCHY: PRNU ANALYSIS TAKES PRIORITY
-            
-            # Check for DEFINITIVE REAL CAMERA evidence (PRNU sensor fingerprint)
-            definitive_real_camera = False
-            if prnu_metrics:
-                prnu_mean_corr = prnu_metrics['prnu_mean_corr']
-                prnu_consistency = prnu_metrics['prnu_consistency_score']
-                prnu_positive_ratio = prnu_metrics['prnu_positive_ratio']
-                
-                # DEFINITIVE real camera: High correlation + high consistency + high positive ratio
-                if prnu_mean_corr > 0.7 and prnu_consistency > 0.8 and prnu_positive_ratio > 0.8:
-                    definitive_real_camera = True
-                    print(f"🔬 DEFINITIVE REAL CAMERA: PRNU correlation={prnu_mean_corr:.3f}, consistency={prnu_consistency:.3f}")
-                    print(f"   This is physical sensor evidence that cannot be replicated by AI")
-            
-            # TIER 1: PRNU DEFINITIVE REAL CAMERA (HIGHEST PRIORITY)
-            if definitive_real_camera:
-                print(f"🎯 PRNU OVERRIDE: Definitive real camera detected - overriding all other analysis")
-                
-                analysis_result['isAi'] = False
-                analysis_result['confidence'] = 95  # Very high confidence for definitive physical evidence
-                analysis_result['curvatureScore'] = max(10, min(30, 100 - int(prnu_mean_corr * 100)))  # Low score for real camera
-                analysis_result['modelDetected'] = "Real Camera"
-                
-                # Update reasoning to explain the PRNU override
-                analysis_result['reasoning'].insert(0, f"🔬 PRNU SENSOR FINGERPRINT: Definitive real camera detected (correlation={prnu_mean_corr:.3f})")
-                analysis_result['reasoning'].insert(1, f"🎯 Physical Evidence: Camera sensor 'DNA' cannot be replicated by current AI technology")
-                analysis_result['reasoning'].insert(2, f"📊 Override Decision: Real Camera (95% confidence based on sensor fingerprint)")
-                
-                print(f"🔬 PRNU OVERRIDE APPLIED: Final decision = Real Camera (95% confidence)")
-                
-            # TIER 2: AI OVERRIDE LOGIC (when no definitive real camera evidence)
-            elif override_to_ai and evidence_result['ai_probability'] < 60:
-                print(f"🚨 AI OVERRIDE: ML model says {evidence_result['ai_probability']:.1f}% AI, but definitive AI indicators detected!")
-                print(f"   Definitive indicators: {definitive_ai_indicators}")
-                
-                # Override the ML decision
-                override_probability = max(75, gemini_curvature, evidence_result['ai_probability'] + 50)
-                override_probability = min(95, override_probability)  # Cap at 95%
-                
-                analysis_result['isAi'] = True
-                analysis_result['confidence'] = min(95, max(80, gemini_confidence))
-                analysis_result['curvatureScore'] = override_probability
-                
-                # Update reasoning to explain the override
-                analysis_result['reasoning'].insert(0, f"🚨 AI OVERRIDE: Despite ML model showing {evidence_result['ai_probability']:.1f}% AI probability, definitive AI indicators detected")
-                analysis_result['reasoning'].insert(1, f"🎯 Override Decision: AI Generated ({override_probability:.1f}% confidence)")
-                analysis_result['reasoning'].insert(2, f"🔍 Definitive Indicators: {'; '.join(definitive_ai_indicators[:2])}")
-                
-                print(f"🚨 AI OVERRIDE APPLIED: Final decision = AI Generated ({override_probability:.1f}%)")
-                
-            # TIER 3: STANDARD ML MODEL RESULTS (when no overrides needed)
-            else:
-                # No override needed - use ML model results
-                analysis_result['isAi'] = evidence_result['verdict'] in ['AI Generated', 'Likely AI']
-                analysis_result['confidence'] = min(95, max(evidence_result['ai_probability'], analysis_result.get('confidence', 50)))
-                analysis_result['curvatureScore'] = evidence_result['ai_probability']
-                
-                # Add evidence-based reasoning
-                analysis_result['reasoning'].insert(0, f"🤖 Evidence-Based ML Analysis: {evidence_result['ai_probability']:.1f}% AI probability")
-                analysis_result['reasoning'].insert(1, f"📊 Model: {evidence_result['analysis_method']} (trained on {evidence_result['training_data']})")
-                analysis_result['reasoning'].insert(2, f"🎯 Verdict: {evidence_result['verdict']} ({evidence_result['confidence']} confidence)")
-            
-            # Add top contributing features
-            if evidence_result['top_contributors']:
-                contrib_text = "🔬 Key Evidence: " + ", ".join([
-                    f"{contrib['description']} ({contrib['contribution']:.3f})"
-                    for contrib in evidence_result['top_contributors'][:3]
-                ])
-                analysis_result['reasoning'].insert(3, contrib_text)
-            
-            print(f"🤖 Evidence-Based Result: {evidence_result['verdict']} ({evidence_result['ai_probability']:.1f}% AI)")
-            print(f"   Model Accuracy: {evidence_result['model_accuracy']}")
-            print(f"   Top Features: {[c['feature'] for c in evidence_result['top_contributors'][:3]]}")
-            
-        except Exception as e:
-            print(f"⚠️ Evidence-based scorer failed: {e}")
-            print(f"   Falling back to Gemini analysis only")
-            # Keep original Gemini analysis result
+        print(f"🤖 NVIDIA Nemotron Analysis Complete: {analysis_result.get('modelDetected', 'Unknown')} ({analysis_result.get('confidence', 0)}% confidence)")
 
-        # 14. 🔬 ADVANCED AI DETECTOR (ADVISORY ONLY - NO OVERRIDE AUTHORITY)
-        advanced_ai_insights = None
-        if USE_ADVANCED_DETECTOR:
-            print(f"🔬 Running Advanced AI Detector (advisory only)...")
-            try:
-                advanced_detector = AdvancedAIDetector()
-                advanced_result = advanced_detector.analyze_advanced_ai(filepath, features_dict)
-                
-                # Store insights for logging but DO NOT override other analysis
-                advanced_ai_insights = {
-                    'probability': advanced_result['advanced_ai_probability'],
-                    'generator': advanced_result['likely_generator'],
-                    'signals': advanced_result['detection_signals'],
-                    'confidence_level': advanced_result['confidence_level']
-                }
-                
-                if advanced_result['advanced_ai_probability'] > 50:
-                    print(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% probability")
-                    print(f"   Suggested Generator: {advanced_result['likely_generator']}")
-                    print(f"   Detection Signals: {len(advanced_result['detection_signals'])}")
-                    print(f"   ⚠️ NOTE: This is advisory only and will NOT override other analysis")
-                else:
-                    print(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% AI probability (below threshold)")
-                
-                # Add advisory information to reasoning (but don't change decision)
-                if advanced_result['advanced_ai_probability'] > 70:
-                    analysis_result['reasoning'].append(f"ℹ️ Advanced AI Detector (advisory): {advanced_result['advanced_ai_probability']:.1f}% probability of {advanced_result['likely_generator']}")
-                    
-            except Exception as e:
-                print(f"⚠️ Advanced AI Detector failed: {e}")
-
-        # 16. Save Submission AUTOMATICALLY
+        # 6. Save Submission AUTOMATICALLY
         submission_id = str(uuid.uuid4())[:8].upper()
         created_at = datetime.now().isoformat()
         
