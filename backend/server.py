@@ -1056,61 +1056,53 @@ async def download_with_unified_api(url: str, file_id: str) -> dict:
         
         # ENHANCED: Try multiple strategies for downloading Google Video URLs
         download_strategies = [
-            # Strategy 1: Direct download with YouTube headers
+            # Strategy 1: Direct download with proper YouTube headers and range support
             {
-                'name': 'YouTube Browser',
+                'name': 'YouTube Browser with Range',
                 'headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Referer': 'https://www.youtube.com/',
-                    'Origin': 'https://www.youtube.com',
                     'Accept': '*/*',
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept-Encoding': 'identity',  # Don't use compression for video
                     'Connection': 'keep-alive',
-                    'Sec-Fetch-Dest': 'video',
-                    'Sec-Fetch-Mode': 'no-cors',
-                    'Sec-Fetch-Site': 'cross-site'
+                    'Range': 'bytes=0-'  # Request from beginning
                 },
-                'timeout': 60
+                'timeout': 60,
+                'stream': True
             },
-            # Strategy 2: Mobile browser (often less restricted)
+            # Strategy 2: Mobile browser with range support
             {
-                'name': 'Mobile Browser',
+                'name': 'Mobile Browser with Range',
                 'headers': {
                     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-                    'Referer': 'https://m.youtube.com/',
                     'Accept': '*/*',
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive'
+                    'Accept-Encoding': 'identity',
+                    'Connection': 'keep-alive',
+                    'Range': 'bytes=0-'
                 },
-                'timeout': 60
+                'timeout': 60,
+                'stream': True
             },
-            # Strategy 3: Android YouTube app simulation
+            # Strategy 3: Direct download without range (sometimes works)
             {
-                'name': 'Android App',
-                'headers': {
-                    'User-Agent': 'com.google.android.youtube/19.29.37 (Linux; U; Android 13) gzip',
-                    'Accept': '*/*',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive'
-                },
-                'timeout': 60
-            },
-            # Strategy 4: Minimal headers (sometimes works when others fail)
-            {
-                'name': 'Minimal',
+                'name': 'Direct Download',
                 'headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Accept': '*/*'
                 },
-                'timeout': 30
+                'timeout': 45,
+                'stream': True
             },
-            # Strategy 5: No headers at all (last resort)
+            # Strategy 4: Minimal approach
             {
-                'name': 'No Headers',
-                'headers': {},
-                'timeout': 30
+                'name': 'Minimal Headers',
+                'headers': {
+                    'User-Agent': 'Mozilla/5.0'
+                },
+                'timeout': 30,
+                'stream': True
             }
         ]
         
@@ -1252,157 +1244,11 @@ async def download_with_cookies(url: str, file_id: str) -> dict:
 
 async def download_with_alternative_youtube_apis(url: str, file_id: str) -> dict:
     """
-    Alternative YouTube downloaders as final fallback
-    Uses multiple YouTube downloader APIs when yt-dlp and cookies fail
+    REMOVED: Alternative YouTube downloaders were unreliable
+    This function now just raises an exception to trigger the user guidance
     """
-    print(f"🔄 Attempting alternative YouTube downloaders for: {url}")
-    
-    # Method 1: Try Y2Mate API
-    try:
-        print(f"📤 Trying Y2Mate API...")
-        
-        # Y2Mate API endpoint
-        y2mate_url = "https://www.y2mate.com/mates/en68/analyze/ajax"
-        
-        response = requests.post(y2mate_url, 
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': 'https://www.y2mate.com/'
-            },
-            data={
-                'url': url,
-                'q_auto': '1',
-                'ajax': '1'
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"📥 Y2Mate response: {json.dumps(data, indent=2)[:300]}")
-            
-            if data.get('status') == 'ok' and data.get('links'):
-                # Find MP4 download link
-                mp4_links = data['links'].get('mp4', {})
-                if mp4_links:
-                    # Get the best quality available
-                    quality_keys = ['360', '480', '720', '1080']
-                    download_info = None
-                    
-                    for quality in quality_keys:
-                        if quality in mp4_links:
-                            download_info = mp4_links[quality]
-                            break
-                    
-                    if download_info and download_info.get('url'):
-                        download_url = download_info['url']
-                        print(f"📥 Downloading from Y2Mate: {download_url[:100]}...")
-                        
-                        video_response = requests.get(download_url, stream=True, timeout=60, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        })
-                        video_response.raise_for_status()
-                        
-                        # Save to file
-                        filename = f"{file_id}.mp4"
-                        filepath = os.path.join(DOWNLOAD_DIR, filename)
-                        
-                        with open(filepath, 'wb') as f:
-                            for chunk in video_response.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                        
-                        print(f"✅ Y2Mate download successful: {filename}")
-                        
-                        return {
-                            "filename": filename,
-                            "url": f"/videos/{filename}",
-                            "meta": {
-                                "title": data.get('title', 'YouTube Video'),
-                                "uploader": "YouTube User",
-                                "source": "y2mate_api"
-                            }
-                        }
-        
-        raise Exception("Y2Mate API failed or returned no download URL")
-        
-    except Exception as e:
-        print(f"❌ Y2Mate API failed: {str(e)}")
-    
-    # Method 2: Try SaveFrom.net API
-    try:
-        print(f"📤 Trying SaveFrom.net API...")
-        
-        # Extract video ID from YouTube URL
-        import re
-        video_id_match = re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]+)', url)
-        if not video_id_match:
-            raise Exception("Could not extract YouTube video ID")
-        
-        video_id = video_id_match.group(1)
-        print(f"📹 YouTube Video ID: {video_id}")
-        
-        # SaveFrom.net API
-        savefrom_url = f"https://sfrom.net/mates/en/analyze/ajax"
-        
-        response = requests.post(savefrom_url,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': 'https://sfrom.net/'
-            },
-            data={
-                'url': url,
-                'ajax': '1'
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"📥 SaveFrom response: {json.dumps(data, indent=2)[:300]}")
-            
-            if data.get('status') == 'ok' and data.get('url_list'):
-                # Find MP4 download link
-                for url_info in data['url_list']:
-                    if url_info.get('type') == 'mp4' and url_info.get('url'):
-                        download_url = url_info['url']
-                        print(f"📥 Downloading from SaveFrom: {download_url[:100]}...")
-                        
-                        video_response = requests.get(download_url, stream=True, timeout=60, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        })
-                        video_response.raise_for_status()
-                        
-                        # Save to file
-                        filename = f"{file_id}.mp4"
-                        filepath = os.path.join(DOWNLOAD_DIR, filename)
-                        
-                        with open(filepath, 'wb') as f:
-                            for chunk in video_response.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                        
-                        print(f"✅ SaveFrom download successful: {filename}")
-                        
-                        return {
-                            "filename": filename,
-                            "url": f"/videos/{filename}",
-                            "meta": {
-                                "title": data.get('title', 'YouTube Video'),
-                                "uploader": "YouTube User",
-                                "source": "savefrom_api"
-                            }
-                        }
-        
-        raise Exception("SaveFrom API failed or returned no download URL")
-        
-    except Exception as e:
-        print(f"❌ SaveFrom API failed: {str(e)}")
-    
-    # All methods failed
-    raise Exception("All alternative YouTube downloaders failed (Y2Mate + SaveFrom)")
+    print(f"🔄 Skipping unreliable alternative YouTube APIs...")
+    raise Exception("Alternative YouTube APIs disabled - they were unreliable")
 
 async def download_with_tiktok_api(url: str, file_id: str) -> dict:
     """
