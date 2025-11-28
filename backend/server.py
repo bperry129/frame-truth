@@ -1668,6 +1668,16 @@ async def download_video(request: DownloadRequest):
         except Exception as unified_error:
             print(f"❌ Unified API fallback failed: {str(unified_error)}")
             
+            # CRITICAL: Try cookie-based download for YouTube if available
+            if is_youtube and os.path.exists(COOKIES_FILE):
+                print(f"🔄 Attempting cookie-based download (final fallback)...")
+                try:
+                    result = await download_with_cookies(request.url, file_id)
+                    print(f"✅ Cookie-based download successful!")
+                    return result
+                except Exception as cookie_error:
+                    print(f"❌ Cookie-based download failed: {str(cookie_error)}")
+            
             # Provide helpful error message based on platform
             if is_youtube:
                 helpful_msg = (
