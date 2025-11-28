@@ -1542,21 +1542,30 @@ async def download_video(request: DownloadRequest):
             })
             print(f"🌐 Generic platform detected - using universal settings")
         
-        # CRITICAL: Use cookies ONLY for YouTube (platform-specific) - with fallback
-        is_youtube = "youtube.com" in request.url or "youtu.be" in request.url
-        if is_youtube and os.path.exists(COOKIES_FILE):
-            # Check if cookies are recent (less than 30 days old)
-            import time
-            cookie_age = time.time() - os.path.getmtime(COOKIES_FILE)
-            if cookie_age < (30 * 24 * 60 * 60):  # 30 days
-                ydl_opts['cookiefile'] = COOKIES_FILE
-                print(f"🍪 Using YouTube cookies from: {COOKIES_FILE}")
-            else:
-                print(f"⚠️ YouTube cookies are old ({cookie_age/86400:.1f} days) - skipping to avoid bot detection")
-        elif is_youtube:
-            print(f"⚠️ YouTube URL detected but no cookies available - may encounter bot detection")
+        # ENHANCED: Skip cookies entirely for YouTube to avoid bot detection
+        # Modern YouTube heavily restricts cookie-based access from servers
+        if is_youtube:
+            print(f"🎥 YouTube detected - using cookieless approach to avoid bot detection")
+            # Add additional anti-detection measures
+            ydl_opts.update({
+                'sleep_interval': 3,  # Longer sleep to appear more human
+                'max_sleep_interval': 15,
+                'retries': 20,  # More retries
+                'fragment_retries': 20,
+                'file_access_retries': 15,
+                # Use more realistic user agent rotation
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                },
+            })
         else:
-            print(f"📱 Non-YouTube platform detected - skipping cookie authentication")
+            print(f"📱 Non-YouTube platform detected - using standard settings")
         
         print(f"📁 Download path: {filepath}")
         
