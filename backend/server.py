@@ -1696,49 +1696,18 @@ async def download_video(request: DownloadRequest):
             })
             print(f"🌐 Generic platform detected - using universal settings")
         
-        # ENHANCED: Advanced YouTube bot detection bypass + Network resilience
+        # SIMPLIFIED: Skip complex YouTube detection - go straight to fallbacks
         if is_youtube:
-            print(f"🎥 YouTube detected - using advanced anti-detection measures")
-            # Use multiple strategies to bypass bot detection
+            print(f"🎥 YouTube detected - using simplified approach with fast fallback")
+            # Minimal yt-dlp attempt with immediate fallback
             ydl_opts.update({
-                'sleep_interval': 3,  # Reduced for faster fallback
-                'max_sleep_interval': 15,
-                'retries': 15,  # Reduced for faster fallback to unified API
-                'fragment_retries': 15,
-                'file_access_retries': 10,
-                # Network resilience
-                'socket_timeout': 30,  # Shorter timeout for faster fallback
-                # Advanced extractor arguments - DNS FIX
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['ios', 'android', 'web', 'tv'],  # Add TV client
-                        'skip': ['dash', 'hls'],
-                        'player_skip': ['configs'],
-                        # CRITICAL FIX: Remove innertube_host to avoid DNS resolution issues
-                        # 'innertube_host': 'youtubei.googleapis.com',  # Commented out - causes DNS failures
-                        'innertube_key': None,  # Let yt-dlp handle key
-                    }
-                },
-                # DNS RESOLUTION FIX: Add custom DNS settings
-                'source_address': '0.0.0.0',  # Bind to all interfaces
-                # Rotate user agents to appear more human
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                    'Accept': '*/*',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                    'Sec-Fetch-Dest': 'video',
-                    'Sec-Fetch-Mode': 'no-cors',
-                    'Sec-Fetch-Site': 'cross-site',
-                },
-                # Additional anti-detection measures
-                'format': 'worst[height<=480]/worst',  # Use lower quality to reduce suspicion
-                'writesubtitles': False,
-                'writeautomaticsub': False,
-                'writedescription': False,
-                'writeinfojson': False,
-                'writethumbnail': False,
+                'socket_timeout': 10,  # Very short timeout for fast fallback
+                'retries': 2,  # Minimal retries
+                'fragment_retries': 2,
+                'file_access_retries': 2,
+                'format': 'worst[height<=480]/worst',  # Low quality for speed
+                'quiet': True,  # Reduce noise
+                'no_warnings': True,
             })
         else:
             print(f"📱 Non-YouTube platform detected - using standard settings")
