@@ -1380,41 +1380,110 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
         # ReStraV confidence is already AI confidence (0-100)
         restrav_ai_score = restrav_confidence
         
-        # Apply technical indicator boosts for strong AI signals
-        technical_boost = 0
+        # BALANCED TECHNICAL INDICATOR SYSTEM
+        # Fix bias: Create balanced scoring that can boost either AI or Real detection
         
-        # Strong curvature/physics indicators should override visual analysis
+        technical_adjustment = 0
+        real_indicators = 0
+        ai_indicators = 0
+        
+        # Analyze curvature/physics indicators
         curvature_score = gemini_result.get('curvatureScore', 50)
         distance_score = gemini_result.get('distanceScore', 50)
         
-        # Very low curvature (0-10) is a strong AI indicator
-        if curvature_score <= 10:
-            technical_boost += 25
-            print(f"🚨 Strong AI indicator: Very low curvature ({curvature_score})")
+        # VERY low curvature/physics (0-5) is a STRONG AI indicator
+        if curvature_score <= 5:
+            ai_indicators += 1
+            technical_adjustment += 20
+            print(f"🚨 Strong AI indicator: Extremely low curvature ({curvature_score})")
+        elif curvature_score <= 15:
+            ai_indicators += 0.5
+            technical_adjustment += 10
+            print(f"⚠️ Moderate AI indicator: Low curvature ({curvature_score})")
         
-        # Very low physics/distance (0-10) is a strong AI indicator  
-        if distance_score <= 10:
-            technical_boost += 25
-            print(f"🚨 Strong AI indicator: Very low physics/distance ({distance_score})")
+        if distance_score <= 5:
+            ai_indicators += 1
+            technical_adjustment += 20
+            print(f"🚨 Strong AI indicator: Extremely low physics/distance ({distance_score})")
+        elif distance_score <= 15:
+            ai_indicators += 0.5
+            technical_adjustment += 10
+            print(f"⚠️ Moderate AI indicator: Low physics/distance ({distance_score})")
         
-        # High ReStraV confidence should boost AI detection
-        if restrav_confidence > 60:
-            technical_boost += 15
-            print(f"🚨 Strong AI indicator: High ReStraV confidence ({restrav_confidence}%)")
+        # Analyze PRNU indicators (Real camera evidence)
+        prnu_mean_corr = prnu_result.get('prnu_mean_corr', 0) if prnu_result else 0
+        prnu_consistency = prnu_result.get('prnu_consistency_score', 0) if prnu_result else 0
         
-        # High frequency confidence should boost AI detection
-        if frequency_confidence > 50:
-            technical_boost += 10
-            print(f"🚨 Strong AI indicator: High frequency confidence ({frequency_confidence}%)")
+        # Strong PRNU evidence suggests REAL camera
+        if prnu_mean_corr > 0.25 and prnu_consistency > 0.4:
+            real_indicators += 1
+            technical_adjustment -= 15
+            print(f"✅ Strong REAL indicator: Consistent PRNU fingerprint (corr={prnu_mean_corr:.3f})")
+        elif prnu_mean_corr > 0.15 and prnu_consistency > 0.25:
+            real_indicators += 0.5
+            technical_adjustment -= 8
+            print(f"✅ Moderate REAL indicator: Some PRNU consistency (corr={prnu_mean_corr:.3f})")
+        
+        # Analyze Gemini visual assessment
+        if not gemini_is_ai and gemini_confidence > 75:
+            real_indicators += 1
+            technical_adjustment -= 12
+            print(f"✅ Strong REAL indicator: High-confidence Gemini assessment ({gemini_confidence}%)")
+        elif not gemini_is_ai and gemini_confidence > 60:
+            real_indicators += 0.5
+            technical_adjustment -= 6
+            print(f"✅ Moderate REAL indicator: Gemini visual assessment ({gemini_confidence}%)")
+        
+        # Motion analysis (more conservative thresholds)
+        if restrav_confidence > 75:  # Raised from 60
+            ai_indicators += 1
+            technical_adjustment += 12
+            print(f"🚨 Strong AI indicator: Very high ReStraV confidence ({restrav_confidence}%)")
+        elif restrav_confidence > 60:
+            ai_indicators += 0.5
+            technical_adjustment += 6
+            print(f"⚠️ Moderate AI indicator: High ReStraV confidence ({restrav_confidence}%)")
+        
+        # Frequency analysis (more conservative thresholds)
+        if frequency_confidence > 70:  # Raised from 50
+            ai_indicators += 1
+            technical_adjustment += 10
+            print(f"🚨 Strong AI indicator: Very high frequency confidence ({frequency_confidence}%)")
+        elif frequency_confidence > 50:
+            ai_indicators += 0.5
+            technical_adjustment += 5
+            print(f"⚠️ Moderate AI indicator: High frequency confidence ({frequency_confidence}%)")
+        
+        # CONFLICT RESOLUTION: When indicators disagree, reduce confidence
+        confidence_penalty = 0
+        if real_indicators >= 1 and ai_indicators >= 1:
+            confidence_penalty = 15
+            technical_adjustment = technical_adjustment * 0.6  # Reduce adjustment when conflicting
+            print(f"⚖️ Conflicting indicators detected: Real={real_indicators:.1f}, AI={ai_indicators:.1f}")
+            print(f"⚖️ Reducing technical adjustment and confidence due to conflict")
+        
+        # PROTECTION AGAINST FALSE POSITIVES
+        # If strong real evidence, limit AI boosting
+        if real_indicators >= 1.5:
+            if technical_adjustment > 0:  # If boosting AI
+                technical_adjustment = min(technical_adjustment, 10)  # Cap AI boost
+                print(f"🛡️ Strong real evidence detected: Limiting AI boost to +10%")
+        
+        # If strong AI evidence, limit real boosting  
+        if ai_indicators >= 1.5:
+            if technical_adjustment < 0:  # If boosting Real
+                technical_adjustment = max(technical_adjustment, -10)  # Cap Real boost
+                print(f"🛡️ Strong AI evidence detected: Limiting Real boost to -10%")
         
         # Weighted combination
         combined_ai_score = (gemini_ai_score * gemini_weight) + (restrav_ai_score * restrav_weight)
         
-        # Apply technical boost
-        combined_ai_score += technical_boost
+        # Apply balanced technical adjustment
+        combined_ai_score += technical_adjustment
         combined_ai_score = max(0, min(100, combined_ai_score))  # Clamp to 0-100
         
-        print(f"📊 Technical boost applied: +{technical_boost}% (final score: {combined_ai_score}%)")
+        print(f"📊 Technical adjustment applied: {technical_adjustment:+.1f}% (final score: {combined_ai_score:.1f}%)")
+        print(f"📊 Evidence summary: Real indicators={real_indicators:.1f}, AI indicators={ai_indicators:.1f}")
         
         # Determine final classification
         final_is_ai = combined_ai_score > 50
@@ -1465,8 +1534,8 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
         
         combined_reasoning.append(f"Analysis: {' + '.join(analysis_methods)}")
         
-        # Determine model detected with hybrid logic
-        model_detected = determine_hybrid_model(gemini_result, restrav_result, final_is_ai)
+        # Determine model detected with hybrid logic (FIXED: Use final classification, not just Gemini)
+        model_detected = determine_hybrid_model(gemini_result, restrav_result, final_is_ai, real_indicators, ai_indicators)
         
         # Create enhanced trajectory data (combine both if available)
         trajectory_data = gemini_result.get('trajectoryData', [])
@@ -1611,30 +1680,62 @@ def calculate_dynamic_weights(characteristics: dict) -> dict:
         "restrav": restrav_weight
     }
 
-def determine_hybrid_model(gemini_result: dict, restrav_result: dict, is_ai: bool) -> str:
-    """Determine the most likely model based on hybrid analysis"""
+def determine_hybrid_model(gemini_result: dict, restrav_result: dict, is_ai: bool, real_indicators: float = 0, ai_indicators: float = 0) -> str:
+    """
+    Determine the most likely model based on balanced hybrid analysis
+    FIXED: Now considers the final classification and evidence strength, not just Gemini's opinion
+    """
     if not is_ai:
-        return "Real Camera"
+        # FIXED: More nuanced real camera detection
+        if real_indicators >= 1.5:
+            return "Real Camera (high confidence)"
+        elif real_indicators >= 1.0:
+            return "Real Camera (moderate confidence)"
+        else:
+            return "Real Camera"
     
-    # Start with Gemini's model detection
+    # For AI classification, consider evidence strength
+    if ai_indicators >= 1.5:
+        confidence_suffix = " (high confidence)"
+    elif ai_indicators >= 1.0:
+        confidence_suffix = " (moderate confidence)"
+    else:
+        confidence_suffix = ""
+    
+    # Start with Gemini's model detection but enhance with technical analysis
     gemini_model = gemini_result.get('modelDetected', 'Unknown AI Model')
     
-    # Enhance with ReStraV characteristics
+    # If Gemini said "Real Camera" but we classified as AI, override with technical analysis
+    if "real camera" in gemini_model.lower():
+        gemini_model = "AI Generated (technical analysis)"
+    
+    # Enhance with ReStraV characteristics for specific AI model detection
     curvature_variance = restrav_result.get('trajectory_curvature_variance', 0)
     smoothness = restrav_result.get('trajectory_smoothness', 0)
+    curvature_score = gemini_result.get('curvatureScore', 50)
+    distance_score = gemini_result.get('distanceScore', 50)
+    
+    # Very low curvature + physics suggests sophisticated AI (Sora-like)
+    if curvature_score <= 5 and distance_score <= 5:
+        if "sora" not in gemini_model.lower():
+            return f"Sora-like AI{confidence_suffix}"
     
     # High curvature variance + low smoothness often indicates Sora
-    if curvature_variance > 800 and smoothness < 0.001:
+    elif curvature_variance > 800 and smoothness < 0.001:
         if "sora" not in gemini_model.lower():
-            return "Sora (motion analysis)"
+            return f"Sora (motion analysis){confidence_suffix}"
     
     # Very high smoothness might indicate Runway Gen-3
     elif smoothness > 100 and curvature_variance < 200:
         if "runway" not in gemini_model.lower():
-            return "Runway Gen-3 (motion analysis)"
+            return f"Runway Gen-3 (motion analysis){confidence_suffix}"
     
-    # Default to Gemini's detection
-    return gemini_model
+    # If Gemini detected a specific model, use it with confidence
+    if gemini_model and "unknown" not in gemini_model.lower() and "error" not in gemini_model.lower():
+        return f"{gemini_model}{confidence_suffix}"
+    
+    # Default to generic AI with confidence level
+    return f"AI Generated{confidence_suffix}"
 
 # Endpoints
 @app.post("/api/upload")
