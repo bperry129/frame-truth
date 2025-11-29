@@ -1797,7 +1797,7 @@ Be thorough but concise. Focus on observable evidence, not speculation."""
                  "HTTP-Referer": "https://frametruth.com",
              },
              json={
-                 "model": "openai/gpt-5-image",
+                 "model": "google/gemini-2.0-flash-001",
                  "messages": [{"role": "user", "content": content_parts}],
                  "response_format": {"type": "json_object"}
              }
