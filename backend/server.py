@@ -1380,9 +1380,41 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
         # ReStraV confidence is already AI confidence (0-100)
         restrav_ai_score = restrav_confidence
         
+        # Apply technical indicator boosts for strong AI signals
+        technical_boost = 0
+        
+        # Strong curvature/physics indicators should override visual analysis
+        curvature_score = gemini_result.get('curvatureScore', 50)
+        distance_score = gemini_result.get('distanceScore', 50)
+        
+        # Very low curvature (0-10) is a strong AI indicator
+        if curvature_score <= 10:
+            technical_boost += 25
+            print(f"🚨 Strong AI indicator: Very low curvature ({curvature_score})")
+        
+        # Very low physics/distance (0-10) is a strong AI indicator  
+        if distance_score <= 10:
+            technical_boost += 25
+            print(f"🚨 Strong AI indicator: Very low physics/distance ({distance_score})")
+        
+        # High ReStraV confidence should boost AI detection
+        if restrav_confidence > 60:
+            technical_boost += 15
+            print(f"🚨 Strong AI indicator: High ReStraV confidence ({restrav_confidence}%)")
+        
+        # High frequency confidence should boost AI detection
+        if frequency_confidence > 50:
+            technical_boost += 10
+            print(f"🚨 Strong AI indicator: High frequency confidence ({frequency_confidence}%)")
+        
         # Weighted combination
         combined_ai_score = (gemini_ai_score * gemini_weight) + (restrav_ai_score * restrav_weight)
+        
+        # Apply technical boost
+        combined_ai_score += technical_boost
         combined_ai_score = max(0, min(100, combined_ai_score))  # Clamp to 0-100
+        
+        print(f"📊 Technical boost applied: +{technical_boost}% (final score: {combined_ai_score}%)")
         
         # Determine final classification
         final_is_ai = combined_ai_score > 50
