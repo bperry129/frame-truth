@@ -59,6 +59,7 @@ from noise_features import compute_noise_features
 from codec_features import compute_codec_features
 from metadata_features import compute_metadata_features
 from trajectory_features import compute_trajectory_features
+from prnu_features import compute_prnu_features
 
 load_dotenv(".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -991,9 +992,13 @@ async def run_hybrid_analysis(video_path: str, original_url: str = "") -> dict:
         print(f"🔊 Running frequency domain analysis...")
         frequency_result = run_frequency_analysis(video_path)
         
+        # Run PRNU sensor fingerprint analysis
+        print(f"🔬 Running PRNU sensor fingerprint analysis...")
+        prnu_result = run_prnu_analysis(restrav_frames)
+        
         # Combine results with weighted scoring
         print(f"⚖️ Combining results with weighted scoring...")
-        hybrid_result = combine_analysis_results(gemini_result, restrav_result, original_url, frequency_result)
+        hybrid_result = combine_analysis_results(gemini_result, restrav_result, original_url, frequency_result, prnu_result)
         
         return hybrid_result
         
@@ -1141,6 +1146,83 @@ def run_restrav_analysis(frames: list, video_path: str) -> dict:
             "method": "error"
         }
 
+def run_prnu_analysis(frames: list) -> dict:
+    """
+    Run PRNU sensor fingerprint analysis on video frames
+    
+    PRNU (Photo Response Non-Uniformity) detects camera sensor fingerprints.
+    Real cameras have consistent sensor noise patterns, AI videos don't.
+    """
+    try:
+        print(f"🔬 Running PRNU sensor fingerprint analysis...")
+        
+        if len(frames) < 4:
+            return {"prnu_confidence": 0, "method": "insufficient_frames"}
+        
+        # Use the existing PRNU features function
+        prnu_features = compute_prnu_features(frames)
+        
+        if not prnu_features:
+            return {"prnu_confidence": 0, "method": "feature_extraction_failed"}
+        
+        # Calculate AI confidence based on PRNU features
+        # Real cameras: high mean correlation, low std, high positive ratio
+        # AI videos: low mean correlation, high std, low positive ratio
+        
+        prnu_mean_corr = prnu_features.get('prnu_mean_corr', 0)
+        prnu_std_corr = prnu_features.get('prnu_std_corr', 0)
+        prnu_positive_ratio = prnu_features.get('prnu_positive_ratio', 0)
+        prnu_consistency_score = prnu_features.get('prnu_consistency_score', 0)
+        
+        # Calculate AI confidence based on PRNU characteristics
+        ai_indicators = 0
+        total_indicators = 0
+        
+        # Low mean correlation suggests AI (real cameras: >0.2, AI: <0.1)
+        if prnu_mean_corr < 0.15:
+            ai_indicators += 1
+        total_indicators += 1
+        
+        # High standard deviation suggests AI (real cameras: <0.3, AI: >0.4)
+        if prnu_std_corr > 0.35:
+            ai_indicators += 1
+        total_indicators += 1
+        
+        # Low positive ratio suggests AI (real cameras: >0.6, AI: <0.4)
+        if prnu_positive_ratio < 0.5:
+            ai_indicators += 1
+        total_indicators += 1
+        
+        # Low consistency score suggests AI (real cameras: >0.3, AI: <0.2)
+        if prnu_consistency_score < 0.25:
+            ai_indicators += 1
+        total_indicators += 1
+        
+        # Calculate confidence as percentage of AI indicators
+        prnu_confidence = (ai_indicators / max(total_indicators, 1)) * 100
+        
+        print(f"✅ PRNU analysis complete: {prnu_confidence:.1f}% AI confidence")
+        print(f"   📊 PRNU metrics: mean_corr={prnu_mean_corr:.3f}, consistency={prnu_consistency_score:.3f}")
+        
+        return {
+            "prnu_confidence": prnu_confidence,
+            "ai_indicators": ai_indicators,
+            "total_indicators": total_indicators,
+            "prnu_mean_corr": prnu_mean_corr,
+            "prnu_std_corr": prnu_std_corr,
+            "prnu_positive_ratio": prnu_positive_ratio,
+            "prnu_consistency_score": prnu_consistency_score,
+            "method": "prnu_sensor_fingerprint"
+        }
+        
+    except Exception as e:
+        print(f"❌ PRNU analysis failed: {str(e)}")
+        return {
+            "prnu_confidence": 0,
+            "method": "error",
+            "error": str(e)
+        }
+
 def run_frequency_analysis(video_path: str) -> dict:
     """
     Run frequency domain analysis to detect AI artifacts
@@ -1250,9 +1332,9 @@ def run_frequency_analysis(video_path: str) -> dict:
             "error": str(e)
         }
 
-def combine_analysis_results(gemini_result: dict, restrav_result: dict, original_url: str = "", frequency_result: dict = None) -> dict:
+def combine_analysis_results(gemini_result: dict, restrav_result: dict, original_url: str = "", frequency_result: dict = None, prnu_result: dict = None) -> dict:
     """
-    Combine Gemini, ReStraV, and frequency analysis results with intelligent weighting
+    Combine Gemini, ReStraV, frequency, and PRNU analysis results with intelligent weighting
     """
     try:
         # Extract scores
@@ -1268,6 +1350,13 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
         if frequency_result:
             frequency_confidence = frequency_result.get('frequency_confidence', 0)
             frequency_method = frequency_result.get('method', 'unknown')
+        
+        # Extract PRNU analysis results
+        prnu_confidence = 0
+        prnu_method = "not_available"
+        if prnu_result:
+            prnu_confidence = prnu_result.get('prnu_confidence', 0)
+            prnu_method = prnu_result.get('method', 'unknown')
         
         # Determine video characteristics for dynamic weighting
         video_characteristics = analyze_video_characteristics(gemini_result, restrav_result, original_url)
@@ -1323,6 +1412,14 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
             combined_reasoning.append("Frequency: Some artificial frequency signatures found")
         elif frequency_method == "dct_spectral_analysis":
             combined_reasoning.append("Frequency: Natural frequency patterns consistent with real camera")
+        
+        # Add PRNU analysis reasoning
+        if prnu_confidence > 50:
+            combined_reasoning.append("PRNU: Lack of consistent camera sensor fingerprint detected")
+        elif prnu_confidence > 25:
+            combined_reasoning.append("PRNU: Weak camera sensor noise patterns found")
+        elif prnu_method == "prnu_sensor_fingerprint":
+            combined_reasoning.append("PRNU: Consistent camera sensor fingerprint detected")
         
         # Add method information
         analysis_methods = []
@@ -1384,6 +1481,14 @@ def combine_analysis_results(gemini_result: dict, restrav_result: dict, original
                     "total_indicators": frequency_result.get('total_indicators', 0) if frequency_result else 0,
                     "high_freq_ratio": frequency_result.get('high_freq_ratio', 0) if frequency_result else 0,
                     "spectral_rolloff": frequency_result.get('spectral_rolloff', 0) if frequency_result else 0
+                },
+                "prnu": {
+                    "confidence": prnu_confidence,
+                    "method": prnu_method,
+                    "ai_indicators": prnu_result.get('ai_indicators', 0) if prnu_result else 0,
+                    "total_indicators": prnu_result.get('total_indicators', 0) if prnu_result else 0,
+                    "mean_corr": prnu_result.get('prnu_mean_corr', 0) if prnu_result else 0,
+                    "consistency_score": prnu_result.get('prnu_consistency_score', 0) if prnu_result else 0
                 }
             }
         }
